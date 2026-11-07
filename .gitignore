@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+data/*.db
+data/*.db-*
+data/backups/
+data/settings.json
+outputs/*
+!outputs/.gitkeep
+!data/.gitkeep
+data/working_portfolio*.json

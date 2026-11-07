@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="Global Portfolio Lab">
+  <g fill="none" stroke-linecap="round">
+    <circle cx="24" cy="24" r="19" stroke="#5b9cf0" stroke-width="2.4"/>
+    <ellipse cx="24" cy="24" rx="8" ry="19" stroke="#5b9cf0" stroke-width="1.4" opacity=".45"/>
+    <path d="M5 24h38" stroke="#5b9cf0" stroke-width="1.4" opacity=".45"/>
+    <path d="M10 34 C16 24, 22 17, 38 13" stroke="#e6ebf2" stroke-width="2.6"/>
+  </g>
+  <circle cx="27.5" cy="16.6" r="3.4" fill="#eb6834" stroke="#121a26" stroke-width="1.4"/>
+</svg>

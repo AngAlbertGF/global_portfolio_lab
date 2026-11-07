@@ -1,0 +1,13 @@
+# Global Portfolio Lab - verified with Python 3.13.18 (Oct 2026); Python 3.12 is also supported by every package.
+streamlit>=1.66,<2          # verified 1.66.1 (st.navigation, components v2 picker, metric sparklines)
+yfinance>=0.2.54            # verified 1.7.0
+pandas>=2.2                 # verified 3.0.5
+numpy>=1.26                 # verified 2.5.3
+scipy>=1.11                 # verified 1.18.1 (SLSQP, HiGHS linprog)
+plotly>=5.20                # verified 7.1.0
+openpyxl>=3.1               # verified 3.1.5
+matplotlib>=3.8             # verified 3.11.2 (PNG/PDF exports)
+exchange_calendars>=4.5     # verified 4.13.2 (holiday-aware gap analysis; optional at runtime)
+Pillow>=10                  # verified 12.3.0 (logo normalization and brand colours)
+requests>=2.31              # verified 2.34.2 (logo downloads)
+pytest>=8                   # verified 9.1.1
