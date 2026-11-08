@@ -57,6 +57,10 @@ def _target(strategy: str, est: pd.DataFrame, cs: ConstraintSet, user_w: np.ndar
         w = np.zeros(cs.n)
         for m, g in cs.groups.items():
             w[g] = cs.market_budgets[m] / len(g)
+        if not cs.is_feasible(w):
+            notes.append(t("{date}: equal-weight allocation violates the configured per-security bounds; strategy skipped.",
+                           date=d.date()))
+            return None
         return w
     mu = estimate_mu(est, cfg.mu_estimator, cfg.periods_per_year).reindex(cs.tickers).values
     cov, _ = estimate_cov(est, cfg.cov_estimator, cfg.periods_per_year)
@@ -126,9 +130,10 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
                 est = rets.iloc[max(0, k - cfg.window):k] if cfg.estimation == "rolling" else rets.iloc[:k]
                 target = _target(strategy, est, cs, uw, cfg, rf, notes, d)
                 if target is None and cur[strategy] is None:
-                    target = _target("equal_weight", est, cs, uw, cfg, rf, notes, d)
-                    notes.append(t("{date}: {strategy} started from equal weights after a failed first optimisation.",
-                                   date=d.date(), strategy=t(STRATEGY_LABELS.get(strategy, strategy))))
+                    raise RuntimeError(
+                        f"Cannot initialize {strategy}: no valid feasible target was obtained. "
+                        "The backtest is stopped rather than silently substituting a different strategy."
+                    )
                 if target is not None:
                     current = cur[strategy]
                     turnover = float(np.abs(target - (current if current is not None else 0.0)).sum())
