@@ -84,7 +84,7 @@ def test_currency_conversion_rejects_nonfinite_prices_and_fx():
     idx = pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"])
     px = pd.Series([100.0, np.inf, 120.0], index=idx)
     fx = pd.Series([17.0, 18.0, np.inf], index=idx)
-    out, report = convert_to_base(px, "USD", "MXN", fx)
+    out, report = convert_to_base(px, "USD", "MXN", fx, max_staleness_days=0)
     assert list(out.index) == [idx[0]]
     assert out.iloc[0] == pytest.approx(1700.0)
     assert report.n_local == 2
