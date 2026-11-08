@@ -162,20 +162,24 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
             if weights is None:
                 raise RuntimeError(f"Strategy {strategy} has no initial feasible portfolio.")
             gross_return = float(weights @ r_t)
-            if gross_return <= -1:
-                net_return = -1.0
-            else:
-                net_return = (1.0 + gross_return) * (1.0 - turnover * cost_rate) - 1.0
+            if gross_return <= -1.0:
+                raise RuntimeError(
+                    f"{strategy} portfolio NAV became non-positive on {d.date()}; "
+                    "leveraged/short margin calls and liquidation are not modelled."
+                )
+            cost_fraction = turnover * cost_rate
+            if cost_fraction >= 1.0:
+                raise RuntimeError(
+                    f"{strategy} transaction costs exhaust portfolio NAV on {d.date()}."
+                )
+            net_return = (1.0 + gross_return) * (1.0 - cost_fraction) - 1.0
             out_r[strategy].append(net_return)
             out_t[strategy].append(turnover)
 
             # Costs are paid from NAV. Applying the same net return to holdings makes the
             # next-period drift consistent with the NAV series (previously only the output
             # return included costs, while the weights drifted on gross returns).
-            if gross_return > -1:
-                cur[strategy] = weights * (1.0 + r_t) * (1.0 - turnover * cost_rate) / (1.0 + net_return)
-            else:
-                cur[strategy] = weights.copy()
+            cur[strategy] = weights * (1.0 + r_t) * (1.0 - cost_fraction) / (1.0 + net_return)
 
     R = pd.DataFrame(out_r, index=test.index)
     TO = pd.DataFrame(out_t, index=test.index)
