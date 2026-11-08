@@ -240,7 +240,12 @@ def _simulate(key: str, R: pd.DataFrame, cs: ConstraintSet, w0: np.ndarray, deci
         gain = h * r
         contrib += gain
         h = h + gain
-        W_end = h.sum()
+        W_end = float(h.sum())
+        if not np.isfinite(W_end) or W_end <= 0.0:
+            raise RuntimeError(
+                f"Portfolio NAV became non-positive on {d.date()}; leveraged/short margin calls "
+                "and liquidation are not modelled."
+            )
         # time-weighted return: the day's flow is excluded, the day's costs are included
         base = W_prev + flow
         twr.append(W_end / base - 1 if base > 0 else 0.0)
