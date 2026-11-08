@@ -12,5 +12,6 @@ with r<sub>f</sub> = (1+R<sub>f</sub>)<sup>1/n</sup> &minus; 1 from the effectiv
 <li><b>Constraints:</b> fixed market budgets &Sigma;<sub>i&isin;m</sub> w<sub>i</sub> = A<sub>m</sub>, full investment,
 long-only unless configured otherwise; every solution is checked for residuals.</li>
 <li><b>Risk decomposition (Euler):</b> &sigma; = &Sigma;<sub>i</sub> w<sub>i</sub>(&Sigma;w)<sub>i</sub>/&sigma;.</li>
+<li><b>Risk parity:</b> minimizes squared dispersion of percentage Euler variance contributions from 1/N under the configured constraints; the multi-start SLSQP solution is local and is not globally certified.</li>
 <li><b>VaR / CVaR:</b> historical, per period, reported as positive losses.</li>
 </ul>
