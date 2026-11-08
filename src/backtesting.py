@@ -84,24 +84,42 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
         raise ValueError("estimation must be 'rolling' or 'expanding'.")
     if cfg.rebalance not in REBALANCE_RULES:
         raise ValueError(f"Unsupported rebalance frequency: {cfg.rebalance}")
-    if cfg.window < 2 or cfg.periods_per_year <= 0:
-        raise ValueError("window must be >= 2 and periods_per_year must be positive.")
+    if (not isinstance(cfg.window, (int, np.integer)) or isinstance(cfg.window, bool)
+            or cfg.window < 2 or not isinstance(cfg.periods_per_year, (int, np.integer))
+            or isinstance(cfg.periods_per_year, bool) or cfg.periods_per_year <= 0):
+        raise ValueError("window must be an integer >= 2 and periods_per_year must be a positive integer.")
     if not np.isfinite(cfg.cost_bps) or not np.isfinite(cfg.slippage_bps) or min(cfg.cost_bps, cfg.slippage_bps) < 0:
         raise ValueError("Transaction costs and slippage must be finite and non-negative.")
     if not np.isfinite(rf_annual) or rf_annual <= -1:
         raise ValueError("The effective annual risk-free rate must be finite and greater than -100%.")
+    if not cfg.strategies or len(set(cfg.strategies)) != len(cfg.strategies):
+        raise ValueError("At least one unique backtest strategy must be selected.")
     unknown = set(cfg.strategies) - set(STRATEGY_LABELS)
     if unknown:
         raise ValueError(f"Unknown strategies: {', '.join(sorted(unknown))}")
-
-    rets = simple_returns(prices.dropna(how="any"))[cs.tickers]
+    if cs.n == 0 or cs.feasibility_problems():
+        raise ValueError("The backtest constraint universe is empty or infeasible.")
+    if not isinstance(prices.index, pd.DatetimeIndex) or prices.index.has_duplicates:
+        raise ValueError("Backtest prices must have a unique DatetimeIndex.")
+    missing_tickers = [tk for tk in cs.tickers if tk not in prices.columns]
+    if missing_tickers:
+        raise ValueError(f"Price history is missing securities: {', '.join(missing_tickers)}")
+    # Select the strategy universe before dropping incomplete rows; unrelated columns
+    # must never change the sample used by this backtest.
+    px = prices.loc[:, cs.tickers].sort_index()
+    price_values = px.to_numpy(dtype=float)
+    if np.isinf(price_values).any() or ((px <= 0) & px.notna()).any().any():
+        raise ValueError("Backtest prices must be finite and strictly positive where observed.")
+    rets = simple_returns(px.dropna(how="any"))
     notes: list[str] = []
     if len(rets) <= cfg.window + 5:
         return BacktestResult(pd.DataFrame(), pd.DataFrame(), {}, pd.DataFrame(), None, None, 0,
                               [t("Need more than {need} observations; have {have}.", need=cfg.window + 5,
                                  have=len(rets))])
     rf = rf_markowitz(rf_annual, cfg.periods_per_year)
-    uw = user_w.reindex(cs.tickers).fillna(0.0).to_numpy(dtype=float)
+    if not set(cs.tickers).issubset(set(user_w.index)):
+        raise ValueError("User portfolio weights are missing one or more backtest securities.")
+    uw = user_w.reindex(cs.tickers).to_numpy(dtype=float)
     if not np.isfinite(uw).all() or not cs.is_feasible(uw):
         raise ValueError("User portfolio weights must be finite and satisfy the configured constraints.")
 
