@@ -14,7 +14,7 @@
 | Max drawdown | $\min_t (W_t/\max_{s\le t} W_s - 1)$ |
 | VaR / CVaR | historical 5% / 1% quantile of returns and the mean beyond it |
 
-**Compare with**: the optimized portfolios are replayed with their own weights on the same returns (in-sample). The benchmark is the index you chose in Settings, converted to [[ccy]].
+**Compare with**: the optimized portfolios are replayed with their own weights on the same returns (in-sample). The benchmark is the index you chose in Settings, converted to [[ccy]]. Benchmark alpha is Jensen's alpha: `n * mean((r_p - r_f) - beta * (r_b - r_f))`.
 
 **Monthly returns**: $\prod (1+r_t) - 1$ inside each calendar month.
 
