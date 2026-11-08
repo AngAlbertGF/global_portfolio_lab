@@ -164,7 +164,8 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
     years = max(len(R) / cfg.periods_per_year, 1e-9)
     rows = []
     for strategy in cfg.strategies:
-        st = portfolio_statistics(R[strategy], rf_annual, cfg.periods_per_year)
+        st = portfolio_statistics(R[strategy], rf_annual, cfg.periods_per_year,
+                                  period_start=rets.index[first - 1])
         rows.append({"strategy": strategy, "cagr": st["annual_geometric_return_cagr"],
                      "annual_volatility": st["annual_volatility"], "sharpe": st["sharpe_annual"],
                      "max_drawdown": st["max_drawdown"], "cumulative_return": st["cumulative_return"],
