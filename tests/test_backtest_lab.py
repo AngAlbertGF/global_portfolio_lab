@@ -131,3 +131,17 @@ def test_backtest_annualization_uses_actual_pre_test_price_date(setup):
     actual_start = prices.index[first_pos - 1]
     expected_years = (res.test_returns.index[-1] - actual_start).days / 365.25
     assert res.runs["user"].realized["years"] == pytest.approx(expected_years)
+
+
+
+def test_backtest_lab_rejects_infeasible_user_weights_and_negative_costs(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    invalid_weights = global_weights(p).copy()
+    invalid_weights.iloc[0] += 0.1
+    with pytest.raises(ValueError, match="User weights"):
+        run_lab(prices, invalid_weights, cs, cfg)
+
+    cfg.cost_bps = -1.0
+    with pytest.raises(ValueError, match="costs"):
+        run_lab(prices, global_weights(p), cs, cfg)
