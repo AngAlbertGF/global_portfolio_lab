@@ -159,5 +159,5 @@ def test_user_expected_returns_reject_nonfinite_values():
     returns = pd.DataFrame({"A": [0.01, -0.01], "B": [0.02, -0.02]})
     with pytest.raises(ValueError, match="finite numeric"):
         estimate_mu(returns, "user", 252, user={"A": 0.05, "B": np.inf})
-    with pytest.raises(ValueError, match="square and finite"):
+    with pytest.raises(ValueError, match="square, and finite"):
         check_covariance(pd.DataFrame([[0.1, 0.0], [0.0, np.nan]]), 100)
