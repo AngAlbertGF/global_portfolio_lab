@@ -112,9 +112,13 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
                     notes.append(t("{date}: {strategy} started from equal weights after a failed first optimisation.",
                                    date=d.date(), strategy=t(STRATEGY_LABELS.get(s, s))))
                 if tgt is not None:
-                    turnover = float(np.abs(tgt - (cur[s] if cur[s] is not None else 0.0)).sum())
                     if cur[s] is None:
                         turnover = float(np.abs(tgt).sum())  # initial purchase
+                    else:
+                        # One-way turnover is half the L1 weight change for a
+                        # fully invested long/short portfolio: buys and sells
+                        # are both counted in gross traded value.
+                        turnover = 0.5 * float(np.abs(tgt - cur[s]).sum())
                     cur[s] = tgt
                     w_hist[s].append(pd.Series(tgt, index=tickers, name=d))
             w = cur[s]

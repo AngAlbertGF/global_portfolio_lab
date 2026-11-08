@@ -14,7 +14,7 @@
 | Caída máxima | $\min_t (W_t/\max_{s\le t} W_s - 1)$ |
 | VaR / CVaR | cuantil histórico de 5% / 1% de los rendimientos y el promedio más allá de él |
 
-**Comparar con**: los portafolios optimizados se reproducen con sus propios pesos sobre los mismos rendimientos (dentro de muestra). El benchmark es el índice elegido en Configuración, convertido a [[ccy]].
+**Comparar con**: los portafolios optimizados se reproducen con sus propios pesos sobre los mismos rendimientos (dentro de muestra). El benchmark es el índice elegido en Configuración, convertido a [[ccy]]. El alfa del benchmark es el alfa de Jensen: `n * promedio((r_p - r_f) - beta * (r_b - r_f))`.
 
 **Rendimientos mensuales**: $\prod (1+r_t) - 1$ dentro de cada mes calendario.
 

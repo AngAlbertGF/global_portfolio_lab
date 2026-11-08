@@ -193,11 +193,11 @@ date (with the FX date actually used and how many days it was carried), and the 
 capital (Builder, step 1) or, if none is set, the default in Settings (100,000; the demo portfolio uses 1,000,000). A
 constant-weight portfolio is replayed as `V_t = V_{t-1}(1 + r_p,t)`, `V_0` = capital. Money contribution of
 security i: `Σ_t V_{t-1} w_i r_{i,t}`; the contributions add up exactly to `V_T − V_0`. Worst fall in money =
-largest `V_t − max_{s≤t} V_s`. VaR/CVaR and Monte Carlo results are scaled by the current value.
+`max_t(max_{s≤t} V_s − V_t)` (a non-negative peak-to-trough loss; equivalently, the minimum of `V_t − max_{s≤t} V_s`). VaR/CVaR and Monte Carlo results are scaled by the current value.
 
 **Common calendar.** Portfolio analysis uses only dates on which every holding has a converted price; the share
-of dropped dates is reported per horizon. Returns spanning a dropped date are multi-day returns. Asynchronous
-closes bias daily cross-market correlations downward — weekly frequency (Fridays) is available in Settings.
+of dropped dates is reported per horizon. Returns spanning a dropped date are multi-day returns. They are currently treated as one observation by the conventional 252/52 annualization, so annualized mean, volatility, Sharpe and covariance estimates can be biased when common-date gaps are frequent or uneven. Asynchronous
+closes also affect cross-market correlation; weekly frequency (Fridays) is available in Settings, but does not eliminate data gaps.
 
 **Returns and annualization** (n = 252 daily or 52 weekly, an approximation):
 `r_t = P_t/P_{t-1} − 1`, `g_t = ln(P_t/P_{t-1})`, cumulative `∏(1+r_t) − 1`, `μ_ann = n·mean(r)`,

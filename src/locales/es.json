@@ -1363,5 +1363,12 @@
   "Under a year: annualized figures are extrapolated from few data.": "Menos de un año: las cifras anualizadas se extrapolan a partir de pocos datos.",
   "The window has only {n} return observations and the minimum is {needed}: widen the window or lower the minimum.": "La ventana tiene solo {n} observaciones de rendimiento y el mínimo es {needed}: amplía la ventana o baja el mínimo.",
   "Accept {n} observations (lower the minimum)": "Aceptar {n} observaciones (bajar el mínimo)",
-  "Changes 'Minimum observations' in Settings for every horizon.": "Cambia 'Observaciones mínimas' en Configuración para todos los horizontes."
+  "Changes 'Minimum observations' in Settings for every horizon.": "Cambia 'Observaciones mínimas' en Configuración para todos los horizontes.",
+  "Optimisation skipped: covariance matrix must be symmetric and positive semidefinite. The matrix is NOT silently repaired.": "Se omitió la optimización: la matriz de covarianza debe ser simétrica y semidefinida positiva. No se reparó silenciosamente.",
+  "Benchmark omitted: at least one test date has no benchmark return; missing returns were not replaced with zero.": "Se omitió el benchmark: falta al menos un rendimiento del índice en el periodo de prueba; los datos faltantes no se sustituyeron por cero.",
+  "Jensen alpha (annual, arith.)": "Alfa de Jensen (anual, aritmético)",
+  "Result contains non-finite weights or portfolio statistics; it is not a valid solution.": "El resultado contiene ponderaciones o estadísticas no finitas; no es una solución válida.",
+  "solver failed; inverse-volatility weights shown as fallback": "El solucionador falló; se muestran las ponderaciones de volatilidad inversa como alternativa.",
+  "The fallback weights are not certified as a risk-parity solution.": "Las ponderaciones alternativas no están certificadas como una solución de paridad de riesgo.",
+  "Covariance matrix must be a non-empty, finite, square matrix.": "La matriz de covarianza debe ser cuadrada, finita y no vacía."
 }

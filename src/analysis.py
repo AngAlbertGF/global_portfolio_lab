@@ -384,10 +384,10 @@ def analyze_horizon(h: int, prices_base: pd.DataFrame, portfolio: Portfolio, set
         mkt = {h_.ticker: h_.market_id for h_ in portfolio.holdings}
         ccy = {t: major_currency((meta.loc[t, "currency"] if t in meta.index else "") or "")[0] for t in universe}
         res.concentration = concentration(res.weights_user, mkt, ccy, res.cov)
-        if not res.cov_check["psd"]:
+        if not res.cov_check["symmetric"] or not res.cov_check["psd"]:
             res.status = "ERROR"
-            res.warnings.append(t("Optimisation skipped: covariance matrix is not positive semidefinite. Choose "
-                                  "Ledoit-Wolf shrinkage; the matrix is NOT silently repaired."))
+            res.warnings.append(t("Optimisation skipped: covariance matrix must be symmetric and positive "
+                                  "semidefinite. The matrix is NOT silently repaired."))
             return res
         cs = ConstraintSet.build(universe, mkt, budgets, settings.constraint_mode, settings.long_only,
                                  settings.min_weight, settings.max_weight)

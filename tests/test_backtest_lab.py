@@ -103,3 +103,18 @@ def test_helpers():
     assert np.allclose(paths[:, -1], 1100.0)
     ed = entry_date_sensitivity(pd.DataFrame({"A": 0.001}, index=idx), {"x": np.array([1.0])}, 100.0)
     assert len(ed) == 3 and ed["x"].is_monotonic_decreasing
+
+def test_missing_benchmark_observation_is_not_imputed_as_zero(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    returns = (prices / prices.shift(1) - 1.0).iloc[1:]
+    te = returns.loc[(returns.index >= pd.Timestamp(cfg.test_start)) &
+                     (returns.index <= pd.Timestamp(cfg.test_end)) &
+                     (returns.index > pd.Timestamp(cfg.train_end))]
+    missing_date = te.index[len(te) // 2]
+    benchmark = prices[p.tickers[0]].drop(index=missing_date)
+
+    result = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=benchmark)
+
+    assert result.benchmark is None
+    assert any("Benchmark omitted" in note for note in result.notes)

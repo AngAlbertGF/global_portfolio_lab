@@ -119,7 +119,7 @@ STAT_LABELS = {"n_obs": N_("Observations"), "start": N_("First return date"), "e
           "negative_frequency": N_("Negative-return frequency"), "zero_frequency": N_("Zero-return frequency"),
           "rf_annual_effective": N_("Risk-free rate (effective annual)"), "rf_period": N_("Risk-free rate per period"),
           "benchmark_obs": N_("Benchmark observations"), "beta": N_("Beta to benchmark"),
-          "alpha_annual_arith": N_("Alpha (annual, arith.)"), "tracking_error": N_("Tracking error"),
+          "alpha_annual_arith": N_("Jensen alpha (annual, arith.)"), "tracking_error": N_("Tracking error"),
           "information_ratio": N_("Information ratio"), "active_return_annual": N_("Active return (annual, arith.)"),
           "benchmark_annual_return": N_("Benchmark annual return (arith.)"),
           "benchmark_cumulative_return": N_("Benchmark cumulative return"),
