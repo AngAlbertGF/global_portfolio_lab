@@ -412,8 +412,9 @@ class Database:
     def upsert_fx(self, base: str, quote: str, rates: pd.Series, provider: str) -> tuple[int, int]:
         if rates is None or rates.empty:
             return 0, 0
-        s = rates.dropna()
-        s = s[s > 0]
+        s = pd.to_numeric(rates, errors="coerce")
+        finite_positive = np.isfinite(s.to_numpy(dtype=float)) & (s.to_numpy(dtype=float) > 0)
+        s = s.loc[finite_positive]
         dates = pd.to_datetime(s.index).strftime("%Y-%m-%d").tolist()
         now = utc_now()
         rows = [(base, quote, d, float(v), provider, now) for d, v in zip(dates, s.values)]
