@@ -149,12 +149,28 @@ def drawdown_series(r: pd.Series) -> pd.Series:
 
 
 def max_drawdown(r: pd.Series) -> tuple[float, pd.Timestamp | None, pd.Timestamp | None]:
+    """Return the maximum drawdown and its peak/trough dates.
+
+    The initial wealth (1.0) is a real peak even though it is not represented by
+    a return observation. When that initial value remains the peak, report the
+    date immediately before the first return rather than mislabelling the
+    first return date as the peak.
+    """
+    r = r.dropna()
     dd = drawdown_series(r)
     if dd.empty:
         return float("nan"), None, None
     trough = dd.idxmin()
     w = wealth_index(r)
-    peak_date = w.loc[:trough].idxmax() if dd.min() < 0 else trough
+    if dd.min() >= 0:
+        peak_date = trough
+    else:
+        prior = w.loc[:trough]
+        if prior.empty or float(prior.max()) <= 1.0:
+            start_date = (r.index[0] - (r.index[1] - r.index[0])) if len(r) > 1 else r.index[0] - pd.Timedelta(days=1)
+            peak_date = start_date
+        else:
+            peak_date = prior.idxmax()
     return float(dd.min()), peak_date, trough
 
 
@@ -223,11 +239,16 @@ def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
         "rf_annual_effective": rf_annual, "rf_period": rf_d,
     }
     if benchmark is not None:
-        out.update(benchmark_relative(r, benchmark, n))
+        out.update(benchmark_relative(r, benchmark, n, rf_d))
     return out
 
 
-def benchmark_relative(r: pd.Series, b: pd.Series, n: int) -> dict:
+def benchmark_relative(r: pd.Series, b: pd.Series, n: int, rf_period: float = 0.0) -> dict:
+    """Benchmark-relative statistics; alpha is the Jensen regression intercept.
+
+    Returns are paired on common dates. Beta is estimated from raw-return
+    covariance (equivalently excess-return covariance with a constant rf).
+    """
     df = pd.concat([r.rename("p"), b.rename("b")], axis=1).dropna()
     if len(df) < 10:
         return {"benchmark_obs": len(df)}
@@ -235,8 +256,9 @@ def benchmark_relative(r: pd.Series, b: pd.Series, n: int) -> dict:
     var_b = df["b"].var(ddof=1)
     beta = float(df["p"].cov(df["b"]) / var_b) if var_b > 0 else float("nan")
     te = float(active.std(ddof=1) * np.sqrt(n))
+    alpha = ((df["p"] - rf_period) - beta * (df["b"] - rf_period)).mean() * n
     return {"benchmark_obs": len(df), "beta": beta,
-            "alpha_annual_arith": float((df["p"].mean() - beta * df["b"].mean()) * n),
+            "alpha_annual_arith": float(alpha),
             "benchmark_annual_return": float(df["b"].mean() * n),
             "benchmark_cumulative_return": cumulative_return(df["b"]),
             "active_return_annual": float(active.mean() * n), "tracking_error": te,
@@ -272,8 +294,9 @@ def asset_statistics(returns: pd.DataFrame, weights: pd.Series, cov: pd.DataFram
         r = returns[tk]
         sd = r.std(ddof=1)
         mdd, _, _ = max_drawdown(r)
+        span_start = (r.index[0] - (r.index[1] - r.index[0])) if len(r) > 1 else r.index[0] - pd.Timedelta(days=1)
         row = {"ticker": tk, "annual_arith_return": r.mean() * n,
-               "annual_cagr": cagr(1.0, 1 + cumulative_return(r), r.index[0], r.index[-1]),
+               "annual_cagr": cagr(1.0, 1 + cumulative_return(r), span_start, r.index[-1]),
                "annual_volatility": sd * np.sqrt(n),
                "sharpe": (r.mean() - rf_d) / sd * np.sqrt(n) if sd > 0 else np.nan,
                "max_drawdown": mdd, "expected_return_used": mu.get(tk, np.nan),
