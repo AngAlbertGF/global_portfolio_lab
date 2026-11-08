@@ -253,6 +253,8 @@ def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
     win = 21 if n == 252 else 4
     ext = rolling_period_extremes(r, win)
     jb = sps.jarque_bera(r.values) if len(r) > 7 else None
+    # Tiny numerical dispersion is not enough to identify higher moments reliably.
+    moments_defined = np.isfinite(sd) and sd > 1e-12 * max(1.0, abs(mean))
     out = {
         "n_obs": len(r), "start": r.index[0], "end": r.index[-1],
         "mean_period": mean, "sd_period": sd,
@@ -268,8 +270,8 @@ def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
         "worst_period_return": float(r.min()), "worst_period_date": r.idxmin(),
         f"best_rolling_{win}p": ext["best"], f"best_rolling_{win}p_end": ext["best_end"],
         f"worst_rolling_{win}p": ext["worst"], f"worst_rolling_{win}p_end": ext["worst_end"],
-        "skewness": float(sps.skew(r.values, bias=False)) if len(r) > 2 and sd > 0 else float("nan"),
-        "excess_kurtosis": float(sps.kurtosis(r.values, fisher=True, bias=False)) if len(r) > 3 and sd > 0 else float("nan"),
+        "skewness": float(sps.skew(r.values, bias=False)) if len(r) > 2 and moments_defined else float("nan"),
+        "excess_kurtosis": float(sps.kurtosis(r.values, fisher=True, bias=False)) if len(r) > 3 and moments_defined else float("nan"),
         "jarque_bera_stat": float(jb.statistic) if jb is not None else float("nan"),
         "jarque_bera_pvalue": float(jb.pvalue) if jb is not None else float("nan"),
         "var_95": var95, "cvar_95": cvar95, "var_99": var99, "cvar_99": cvar99,
