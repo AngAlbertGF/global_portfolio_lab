@@ -71,7 +71,13 @@ def estimate_mu(returns: pd.DataFrame, method: str, periods_per_year: int, lam: 
         missing = [c for c in returns.columns if c not in user]
         if missing:
             raise ValueError(t("User-defined expected returns missing for: {tickers}", tickers=", ".join(missing)))
-        return pd.Series({c: float(user[c]) for c in returns.columns})
+        try:
+            values = np.asarray([user[col] for col in returns.columns], dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("User-defined expected returns must be finite numeric values.") from exc
+        if not np.isfinite(values).all():
+            raise ValueError("User-defined expected returns must be finite numeric values.")
+        return pd.Series(values, index=returns.columns, dtype=float)
     raise ValueError(f"Unknown expected-return estimator '{method}'")
 
 
@@ -92,7 +98,9 @@ def ledoit_wolf(X: np.ndarray) -> tuple[np.ndarray, float]:
     delta_ = np.sum(S ** 2)
     beta = (beta_ / T - delta_ / T)
     delta = np.sum((S - mu * np.eye(p)) ** 2)
-    beta = min(beta, delta)
+    # Finite-sample round-off can make the estimated intensity slightly negative;
+    # the Ledoit-Wolf shrinkage coefficient is constrained to [0, 1].
+    beta = float(np.clip(beta, 0.0, delta))
     shrink = 0.0 if delta == 0 else beta / delta
     return (1 - shrink) * S + shrink * mu * np.eye(p), float(shrink)
 
@@ -126,7 +134,9 @@ def estimate_cov(returns: pd.DataFrame, method: str, periods_per_year: int, lam:
 
 
 def check_covariance(cov: pd.DataFrame, n_obs: int) -> dict:
-    A = cov.values
+    A = np.asarray(cov.values, dtype=float)
+    if A.ndim != 2 or A.shape[0] == 0 or A.shape[0] != A.shape[1] or not np.isfinite(A).all():
+        raise ValueError("Covariance matrix must be non-empty, square, and finite.")
     sym_err = float(np.max(np.abs(A - A.T))) if A.size else 0.0
     eig = np.linalg.eigvalsh((A + A.T) / 2)
     max_e, min_e = float(eig.max()), float(eig.min())
