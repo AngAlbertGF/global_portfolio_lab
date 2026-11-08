@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import numpy as np
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
