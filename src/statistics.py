@@ -103,14 +103,20 @@ def estimate_cov(returns: pd.DataFrame, method: str, periods_per_year: int, lam:
 
 
 def check_covariance(cov: pd.DataFrame, n_obs: int) -> dict:
-    A = cov.values
-    sym_err = float(np.max(np.abs(A - A.T))) if A.size else 0.0
+    A = np.asarray(cov.values, dtype=float)
+    if A.ndim != 2 or A.shape[0] != A.shape[1] or A.shape[0] == 0 or not np.isfinite(A).all():
+        warning = t("Covariance matrix must be a non-empty, finite, square matrix.")
+        return {"symmetric_error": float("inf"), "min_eigenvalue": float("nan"),
+                "max_eigenvalue": float("nan"), "condition_number": float("inf"),
+                "symmetric": False, "psd": False, "warnings": [warning]}
+    sym_err = float(np.max(np.abs(A - A.T)))
     eig = np.linalg.eigvalsh((A + A.T) / 2)
     max_e, min_e = float(eig.max()), float(eig.min())
     tol = 1e-10 * max(max_e, 1e-16) * A.shape[0]
     cond = float(max_e / min_e) if min_e > tol else float("inf")
+    symmetric = sym_err <= 1e-12 * max(max_e, 1.0)
     warnings: list[str] = []
-    if sym_err > 1e-12 * max(max_e, 1.0):
+    if not symmetric:
         warnings.append(t("Covariance matrix is not symmetric (max asymmetry {value}).", value=f"{sym_err:.2e}"))
     if min_e < -tol:
         warnings.append(t("Covariance matrix is NOT positive semidefinite (min eigenvalue {value}).",
@@ -129,7 +135,7 @@ def check_covariance(cov: pd.DataFrame, n_obs: int) -> dict:
         warnings.append(t("Observations ({n}) are fewer than 10x the number of assets ({p}); estimates are "
                           "noisy -- consider Ledoit-Wolf shrinkage.", n=n_obs, p=p))
     return {"symmetric_error": sym_err, "min_eigenvalue": min_e, "max_eigenvalue": max_e,
-            "condition_number": cond, "psd": min_e >= -tol, "warnings": warnings}
+            "condition_number": cond, "symmetric": symmetric, "psd": min_e >= -tol, "warnings": warnings}
 
 
 def cov_to_corr(cov: pd.DataFrame) -> pd.DataFrame:
