@@ -118,3 +118,16 @@ def test_missing_benchmark_returns_are_not_filled_with_zero(setup):
     incomplete = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=incomplete_benchmark)
     assert incomplete.benchmark is None
     assert any("Benchmark omitted" in note for note in incomplete.notes)
+
+
+
+def test_backtest_annualization_uses_actual_pre_test_price_date(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    res = run_lab(prices, global_weights(p), cs, cfg)
+    first_test_return_date = res.test_returns.index[0]
+    first_pos = prices.index.get_loc(first_test_return_date)
+    assert first_pos > 0
+    actual_start = prices.index[first_pos - 1]
+    expected_years = (res.test_returns.index[-1] - actual_start).days / 365.25
+    assert res.runs["user"].realized["years"] == pytest.approx(expected_years)
