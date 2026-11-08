@@ -4,7 +4,7 @@
 
 This audit was implemented on `audit/quantitative-correctness-2026-11` and submitted for publication through pull request [#2](https://github.com/AngAlbertGF/global_portfolio_lab/pull/2). The default branch is only changed through the reviewed merge of that pull request.
 
-**Validation passed.** GitHub Actions run [42524254490](https://github.com/AngAlbertGF/global_portfolio_lab/actions/runs/42524254490), on commit `d588750b44480d272352a7bf186381b9e75be0b3`, completed successfully under Python 3.13.18. The command `pytest -q --tb=short` reported **118 passed, 3 skipped, 0 failed** in 59.99 seconds. Eight pandas timezone-series deprecation warnings were emitted by existing UI tests; they did not fail the suite. The subsequent translation-catalog formatting cleanup preserves the same seven translations and does not change application logic.
+**Validation passed on the final code-and-test commit.** GitHub Actions run [42524552317](https://github.com/AngAlbertGF/global_portfolio_lab/actions/runs/42524552317), on commit `d9e704ad18c113199549eb8e31276a2ffcc0ed0e`, completed successfully under Python 3.13.18. The command `pytest -q --tb=short` reported **119 passed, 3 skipped, 0 failed** in 85.01 seconds. Eight pandas timezone-series deprecation warnings were emitted by existing UI tests; they did not fail the suite.
 
 ## Findings corrected in this branch
 
@@ -79,7 +79,7 @@ This is equivalent in magnitude to the absolute value of the minimum of wealth m
 
 ## Regression tests added
 
-- `tests/test_audit_regressions.py` covers asset CAGR timing, maximum-drawdown peak dating, Jensen alpha, asymmetric covariance, negative portfolio variance, risk-parity solver failure, maximum-risk solver failure, invalid CVaR confidence levels, and one-way turnover.
+- `tests/test_audit_regressions.py` covers asset CAGR timing (including the one-observation boundary), maximum-drawdown peak dating, Jensen alpha, asymmetric covariance, negative portfolio variance, risk-parity solver failure, maximum-risk solver failure, invalid CVaR confidence levels, and one-way turnover.
 - `tests/test_backtest_lab.py` now verifies that a missing benchmark observation is not converted into a zero return.
 - `.github/workflows/tests.yml` runs the offline pytest suite on Python 3.13 for audit-branch pushes and pull requests targeting `main`.
 
