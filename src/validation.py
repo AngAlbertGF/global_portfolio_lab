@@ -217,11 +217,9 @@ def clean_price_frame(df: pd.DataFrame, extreme_threshold: float = 0.5) -> tuple
     rows_in = len(df)
     issues: list[str] = []
     out = df.copy()
-    out["adj_close"] = pd.to_numeric(out["adj_close"], errors="coerce")
-    out["close"] = pd.to_numeric(out["close"], errors="coerce")
-    finite = np.isfinite(out["adj_close"].to_numpy(dtype=float)) & np.isfinite(
-        out["close"].to_numpy(dtype=float))
-    missing = out["adj_close"].isna() | out["close"].isna() | ~finite
+    out["adj_close"] = pd.to_numeric(out["adj_close"], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    out["close"] = pd.to_numeric(out["close"], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    missing = out["adj_close"].isna() | out["close"].isna()
     out = out[~missing]
     nonpos = (out["adj_close"] <= 0) | (out["close"] <= 0)
     out = out[~nonpos]
