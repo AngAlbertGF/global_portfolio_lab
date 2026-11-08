@@ -24,6 +24,11 @@ from .returns import cagr, cumulative_return, wealth_index
 # Risk-free helpers
 # ---------------------------------------------------------------------------
 def rf_per_period(rf_annual_effective: float, periods_per_year: int) -> float:
+    """Convert an effective annual risk-free rate to an effective per-period rate."""
+    if not np.isfinite(rf_annual_effective) or rf_annual_effective <= -1.0:
+        raise ValueError("The effective annual risk-free rate must be finite and greater than -100%.")
+    if not isinstance(periods_per_year, (int, np.integer)) or isinstance(periods_per_year, bool) or periods_per_year <= 0:
+        raise ValueError("periods_per_year must be a positive integer.")
     return (1.0 + rf_annual_effective) ** (1.0 / periods_per_year) - 1.0
 
 
@@ -35,6 +40,11 @@ def rf_markowitz(rf_annual_effective: float, periods_per_year: int) -> float:
 # Estimators
 # ---------------------------------------------------------------------------
 def ewma_weights(n: int, lam: float) -> np.ndarray:
+    """Normalized exponential weights, with the largest weight on the latest observation."""
+    if not isinstance(n, (int, np.integer)) or isinstance(n, bool) or n < 1:
+        raise ValueError("The number of EWMA observations must be a positive integer.")
+    if not np.isfinite(lam) or not 0.0 < lam <= 1.0:
+        raise ValueError("The EWMA decay factor lambda must lie in (0, 1].")
     w = lam ** np.arange(n - 1, -1, -1, dtype=float)
     return w / w.sum()
 
@@ -42,9 +52,15 @@ def ewma_weights(n: int, lam: float) -> np.ndarray:
 def estimate_mu(returns: pd.DataFrame, method: str, periods_per_year: int, lam: float = 0.97,
                 user: dict[str, float] | None = None) -> pd.Series:
     """Annualised expected-return vector (decimal)."""
+    if not isinstance(periods_per_year, (int, np.integer)) or isinstance(periods_per_year, bool) or periods_per_year <= 0:
+        raise ValueError("periods_per_year must be a positive integer.")
+    if returns.empty or returns.shape[1] == 0 or not np.isfinite(returns.to_numpy(dtype=float)).all():
+        raise ValueError("Expected-return estimation requires a non-empty, finite return matrix.")
     if method == "arithmetic":
         return returns.mean() * periods_per_year
     if method == "geometric":
+        if (returns <= -1.0).any().any():
+            raise ValueError("Geometric return estimation requires every simple return to be greater than -100%.")
         n = len(returns)
         return (1.0 + returns).prod() ** (periods_per_year / n) - 1.0
     if method == "ewma":
@@ -64,6 +80,9 @@ def ledoit_wolf(X: np.ndarray) -> tuple[np.ndarray, float]:
 
     Returns (shrunk covariance, shrinkage intensity in [0, 1]).
     """
+    X = np.asarray(X, dtype=float)
+    if X.ndim != 2 or X.shape[0] < 2 or X.shape[1] < 1 or not np.isfinite(X).all():
+        raise ValueError("Ledoit-Wolf estimation requires a finite matrix with at least two observations and one asset.")
     T, p = X.shape
     Xc = X - X.mean(axis=0)
     S = Xc.T @ Xc / T
@@ -82,9 +101,11 @@ def estimate_cov(returns: pd.DataFrame, method: str, periods_per_year: int, lam:
                  ) -> tuple[pd.DataFrame, dict]:
     T, p = returns.shape
     info: dict = {"method": method, "n_obs": T, "n_assets": p, "shrinkage": None, "regularized": False}
-    if T < 2:
-        raise ValueError("At least two return observations are required to estimate a covariance matrix.")
-    X = returns.values
+    if T < 2 or p < 1:
+        raise ValueError("Covariance estimation requires at least two observations and one asset.")
+    X = returns.to_numpy(dtype=float)
+    if not np.isfinite(X).all():
+        raise ValueError("Covariance estimation requires a complete, finite return matrix (no NaN or infinity).")
     if method == "sample":
         S = np.cov(X, rowvar=False, ddof=1)
     elif method == "ledoit_wolf":
@@ -160,8 +181,13 @@ def max_drawdown(r: pd.Series) -> tuple[float, pd.Timestamp | None, pd.Timestamp
 
 def historical_var_cvar(r: pd.Series, level: float) -> tuple[float, float]:
     """Positive numbers = losses. VaR_a = -q_{1-a}; CVaR_a = -E[r | r <= q_{1-a}]."""
-    q = float(np.quantile(r.values, 1 - level))
-    tail = r.values[r.values <= q]
+    values = np.asarray(r, dtype=float)
+    if not np.isfinite(level) or not 0.0 < level < 1.0:
+        raise ValueError("The confidence level must lie strictly between 0 and 1.")
+    if values.size == 0 or not np.isfinite(values).all():
+        raise ValueError("Historical VaR/CVaR requires a non-empty, finite return series.")
+    q = float(np.quantile(values, 1 - level))
+    tail = values[values <= q]
     return -q, -float(tail.mean()) if len(tail) else float("nan")
 
 
@@ -181,6 +207,10 @@ def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
     n = periods_per_year
     rf_d = rf_per_period(rf_annual, n)
     r = r.dropna()
+    if r.empty:
+        raise ValueError("Portfolio statistics require at least one return observation.")
+    if not np.isfinite(r.to_numpy(dtype=float)).all() or (r < -1.0).any():
+        raise ValueError("Portfolio returns must be finite and cannot be below -100%.")
     excess = r - rf_d
     mean, sd = float(r.mean()), float(r.std(ddof=1))
     downside = np.minimum(excess.values, 0.0)
@@ -272,8 +302,9 @@ def asset_statistics(returns: pd.DataFrame, weights: pd.Series, cov: pd.DataFram
         r = returns[tk]
         sd = r.std(ddof=1)
         mdd, _, _ = max_drawdown(r)
+        span_start = r.index[0] - (r.index[1] - r.index[0]) if len(r) > 1 else r.index[0]
         row = {"ticker": tk, "annual_arith_return": r.mean() * n,
-               "annual_cagr": cagr(1.0, 1 + cumulative_return(r), r.index[0], r.index[-1]),
+               "annual_cagr": cagr(1.0, 1 + cumulative_return(r), span_start, r.index[-1]),
                "annual_volatility": sd * np.sqrt(n),
                "sharpe": (r.mean() - rf_d) / sd * np.sqrt(n) if sd > 0 else np.nan,
                "max_drawdown": mdd, "expected_return_used": mu.get(tk, np.nan),
