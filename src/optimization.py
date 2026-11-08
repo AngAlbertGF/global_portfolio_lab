@@ -185,6 +185,10 @@ class OptimizationResult:
 def port_stats(w: np.ndarray, mu: np.ndarray, cov: np.ndarray, rf: float) -> tuple[float, float, float | None]:
     ret = float(w @ mu)
     var = float(w @ cov @ w)
+    # Do not turn a materially negative variance into a plausible-looking zero.
+    scale = max(float(np.max(np.abs(cov))), 1.0) if cov.size else 1.0
+    if not np.isfinite(var) or var < -1e-12 * scale:
+        return ret, float("nan"), None
     vol = float(np.sqrt(max(var, 0.0)))
     sharpe = (ret - rf) / vol if vol > 1e-12 else None
     return ret, vol, sharpe
@@ -194,9 +198,12 @@ def make_result(name: str, w: np.ndarray, cs: ConstraintSet, mu: np.ndarray, cov
                 solver_success: bool, status: str, method: str, certification: str,
                 notes: list[str] | None = None, polish: bool = True) -> OptimizationResult:
     w = cs.polish(w.copy()) if polish and solver_success else np.asarray(w, float)
-    feasible = cs.is_feasible(w)
     ret, vol, sh = port_stats(w, mu, cov, rf)
+    numeric_ok = bool(np.isfinite(w).all() and np.isfinite(ret) and np.isfinite(vol))
+    feasible = cs.is_feasible(w) and numeric_ok
     notes = list(notes or [])
+    if not numeric_ok:
+        notes.append(t("Result contains non-finite weights or portfolio statistics; it is not a valid solution."))
     if vol <= 1e-12:
         notes.append(t("Volatility is zero: Sharpe ratio undefined."))
     if not feasible:
@@ -288,6 +295,13 @@ def minimum_return_value(mu: np.ndarray, cs: ConstraintSet) -> float | None:
 def minimum_cvar(returns: np.ndarray, mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float,
                  level: float = 0.95) -> OptimizationResult:
     """Rockafellar-Uryasev LP: min a + 1/((1-b)T) sum u_t, u_t >= -r_t'w - a, u >= 0 (per-period scenarios)."""
+    returns = np.asarray(returns, dtype=float)
+    if not np.isfinite(level) or not 0.0 < level < 1.0:
+        raise ValueError("CVaR confidence level must be strictly between 0 and 1.")
+    if returns.ndim != 2 or returns.shape[0] == 0 or returns.shape[1] != cs.n:
+        raise ValueError(f"Scenario returns must be a non-empty (T, {cs.n}) matrix.")
+    if not np.isfinite(returns).all():
+        raise ValueError("Scenario returns must contain only finite values.")
     T, n = returns.shape
     A, b = cs.equality_system()
     c = np.concatenate([np.zeros(n), [1.0], np.full(T, 1.0 / ((1 - level) * T))])
@@ -423,6 +437,8 @@ def maximum_diversification(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, 
 
 def target_volatility(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float, target_vol: float,
                       gmv_vol: float | None = None) -> OptimizationResult:
+    if not np.isfinite(target_vol) or target_vol < 0:
+        raise ValueError("Target volatility must be a finite, non-negative annualized value.")
     name = t("Max return @ vol {target}", target=f"{target_vol:.2%}")
     if gmv_vol is not None and target_vol < gmv_vol - 1e-9:
         return _infeasible(name, cs, mu, cov, rf, [t("Target volatility is below the minimum attainable "
@@ -490,7 +506,7 @@ def maximum_risk(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float, 
         s = minimize(f, x0, jac=g, method="SLSQP", bounds=list(zip(cs.lb, cs.ub)), constraints=_scipy_constraints(cs),
                      options={"ftol": 1e-14, "maxiter": 2000})
         w = cs.polish(s.x.copy())
-        if cs.is_feasible(w) and (best is None or f(w) < f(best)):
+        if s.success and cs.is_feasible(w) and (best is None or f(w) < f(best)):
             best = w
     if best is None:
         return make_result(name, cs.feasible_start(), cs, mu, cov, rf, False, t("no start converged"),
@@ -539,9 +555,12 @@ def risk_parity(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float) -
     sol = minimize(f, x0, jac=g, method="SLSQP", bounds=list(zip(cs.lb, cs.ub)), constraints=_scipy_constraints(cs),
                    options={"ftol": 1e-16, "maxiter": 3000})
     ok = bool(sol.success) and cs.is_feasible(cs.polish(sol.x.copy()))
-    res = make_result(t("Risk parity"), sol.x if ok else x0, cs, mu, cov, rf, True,
-                      sol.message if ok else t("used inverse-volatility start"), t("SLSQP (equal risk contribution)"),
-                      t("local optimum (non-convex)") if ok else t("approximate (not certified)"))
+    res = make_result(t("Risk parity"), sol.x if ok else x0, cs, mu, cov, rf, bool(ok),
+                      sol.message if ok else t("solver failed; inverse-volatility weights shown as fallback"),
+                      t("SLSQP (equal risk contribution)"),
+                      t("local optimum (non-convex)") if ok else t("failed"))
+    if not ok:
+        res.notes.append(t("The fallback weights are not certified as a risk-parity solution."))
     return res
 
 
