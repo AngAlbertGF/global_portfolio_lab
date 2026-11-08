@@ -396,13 +396,19 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
                                 sim["turnover"], sim["costs"], train_value, forecast, realized, sim["notes"])
     bench = None
     if benchmark_prices is not None and not benchmark_prices.dropna().empty:
-        b = benchmark_prices.dropna()
-        br = (b / b.shift(1) - 1).reindex(te.index).fillna(0.0)
-        bvals, cur = [], 0.0
-        for k, d in enumerate(te.index):
-            cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
-            bvals.append(cur)
-        bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        b = benchmark_prices.dropna().sort_index()
+        br = (b / b.shift(1) - 1).reindex(te.index)
+        # Missing benchmark observations are not zero returns. A zero-fill would
+        # fabricate performance (and the next available observation would span
+        # multiple sessions), so only report a benchmark on a complete test grid.
+        if br.notna().all() and np.isfinite(br.to_numpy(dtype=float)).all() and (br >= -1.0).all():
+            bvals, cur = [], 0.0
+            for k, d in enumerate(te.index):
+                cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
+                bvals.append(cur)
+            bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        else:
+            notes.append(t("Benchmark omitted: its return history does not cover every test date; missing benchmark returns were not filled with zero."))
     return LabResult(cfg, runs, tr, te, mu_tr, cov_tr, flows, bench, notes)
 
 
