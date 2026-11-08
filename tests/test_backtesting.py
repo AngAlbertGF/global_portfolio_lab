@@ -49,3 +49,17 @@ def test_backtest_rejects_invalid_weights_and_costs():
     with pytest.raises(ValueError, match="non-negative"):
         run_backtest(prices, good_weights, cs, 0.05,
                      BacktestConfig(window=20, cost_bps=-1.0, strategies=("user_rebalanced",)))
+
+
+
+def test_backtest_does_not_run_infeasible_equal_weight_strategy():
+    dates = pd.bdate_range("2024-01-02", periods=80)
+    prices = pd.DataFrame({"A": np.linspace(100.0, 120.0, len(dates)),
+                           "B": np.linspace(100.0, 110.0, len(dates))}, index=dates)
+    cs = ConstraintSet(tickers=["A", "B"], market_of={"A": "ALL", "B": "ALL"},
+                       market_budgets={"ALL": 1.0}, mode="global_only",
+                       lb=np.array([0.6, 0.0]), ub=np.array([1.0, 1.0]))
+    feasible_user_weights = pd.Series({"A": 0.6, "B": 0.4})
+    cfg = BacktestConfig(window=20, strategies=("equal_weight",))
+    with pytest.raises(RuntimeError, match="no valid feasible target"):
+        run_backtest(prices, feasible_user_weights, cs, 0.0, cfg)
