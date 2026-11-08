@@ -216,3 +216,14 @@ def test_risk_parity_does_not_report_fallback_as_optimisation_success(problem, m
     assert not res.solver_success
     assert res.certification == "failed"
     assert any("fallback" in note.lower() for note in res.notes)
+
+
+
+def test_minimum_cvar_rejects_invalid_level_and_scenarios(problem):
+    mu, cov, cs, rf = problem
+    scenarios = np.zeros((100, cs.n))
+    with pytest.raises(ValueError, match="confidence level"):
+        minimum_cvar(scenarios, mu, cov, cs, rf, level=1.0)
+    scenarios[0, 0] = np.inf
+    with pytest.raises(ValueError, match="finite T-by-N"):
+        minimum_cvar(scenarios, mu, cov, cs, rf)
