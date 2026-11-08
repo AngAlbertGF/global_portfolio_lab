@@ -127,3 +127,28 @@ def test_asset_cagr_counts_the_first_return_interval():
     start = idx[0] - (idx[1] - idx[0])
     expected = (1.1 ** 3) ** (365.25 / (idx[-1] - start).days) - 1
     assert got == pytest.approx(expected)
+
+
+
+def test_cagr_uses_actual_pre_sample_price_date_for_irregular_intervals():
+    idx = pd.to_datetime(["2024-01-10", "2024-01-11", "2024-01-15"])
+    period_start = pd.Timestamp("2024-01-05")
+    r = pd.Series([0.10, 0.10, 0.10], index=idx)
+    stats = portfolio_statistics(r, 0.0, 252, period_start=period_start)
+    expected = (1.1 ** 3) ** (365.25 / (idx[-1] - period_start).days) - 1
+    assert stats["annual_geometric_return_cagr"] == pytest.approx(expected)
+
+    returns = pd.DataFrame({"A": r})
+    weights = pd.Series({"A": 1.0})
+    cov = pd.DataFrame([[0.01]], index=["A"], columns=["A"])
+    mu = pd.Series({"A": 0.10})
+    got = asset_statistics(returns, weights, cov, mu, 0.0, 252,
+                           pd.DataFrame(index=["A"]), period_start=period_start).loc["A", "annual_cagr"]
+    assert got == pytest.approx(expected)
+
+
+def test_covariance_and_bootstrap_reject_invalid_annualization_and_blocks():
+    with pytest.raises(ValueError, match="periods_per_year"):
+        estimate_cov(pd.DataFrame({"A": [0.01, -0.01]}), "sample", 0)
+    with pytest.raises(ValueError, match="block"):
+        block_bootstrap_ci(pd.Series([0.01, -0.01, 0.02]), 0.05, 252, block=0)
