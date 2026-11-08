@@ -288,6 +288,21 @@ def minimum_return_value(mu: np.ndarray, cs: ConstraintSet) -> float | None:
 def minimum_cvar(returns: np.ndarray, mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float,
                  level: float = 0.95) -> OptimizationResult:
     """Rockafellar-Uryasev LP: min a + 1/((1-b)T) sum u_t, u_t >= -r_t'w - a, u >= 0 (per-period scenarios)."""
+    returns = np.asarray(returns, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+    cov = np.asarray(cov, dtype=float)
+    if not np.isfinite(level) or not 0.0 < level < 1.0:
+        raise ValueError("CVaR confidence level must lie strictly between 0 and 1.")
+    if (returns.ndim != 2 or returns.shape[0] < 2 or returns.shape[1] != cs.n
+            or not np.isfinite(returns).all() or np.any(returns < -1.0)):
+        raise ValueError("CVaR scenarios must be a finite T-by-N matrix with T >= 2 and returns >= -100%.")
+    if mu.shape != (cs.n,) or cov.shape != (cs.n, cs.n) or not np.isfinite(mu).all() or not np.isfinite(cov).all():
+        raise ValueError("CVaR expected returns and covariance must be finite and match the constraint universe.")
+    if not np.isfinite(rf):
+        raise ValueError("The risk-free input to CVaR optimisation must be finite.")
+    problems = cs.feasibility_problems()
+    if problems:
+        return _infeasible(t("Minimum CVaR {level}", level=f"{level:.0%}"), cs, mu, cov, rf, problems)
     T, n = returns.shape
     A, b = cs.equality_system()
     c = np.concatenate([np.zeros(n), [1.0], np.full(T, 1.0 / ((1 - level) * T))])
