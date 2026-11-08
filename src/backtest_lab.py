@@ -397,12 +397,17 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
     bench = None
     if benchmark_prices is not None and not benchmark_prices.dropna().empty:
         b = benchmark_prices.dropna()
-        br = (b / b.shift(1) - 1).reindex(te.index).fillna(0.0)
-        bvals, cur = [], 0.0
-        for k, d in enumerate(te.index):
-            cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
-            bvals.append(cur)
-        bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        # A missing benchmark observation is not a zero return. Do not silently
+        # invent flat performance on provider gaps or non-overlapping dates.
+        br = (b / b.shift(1) - 1).reindex(te.index)
+        if br.notna().all():
+            bvals, cur = [], 0.0
+            for k, d in enumerate(te.index):
+                cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
+                bvals.append(cur)
+            bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        else:
+            notes.append(t("Benchmark omitted: at least one test date has no benchmark return; missing returns were not replaced with zero."))
     return LabResult(cfg, runs, tr, te, mu_tr, cov_tr, flows, bench, notes)
 
 
