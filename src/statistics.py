@@ -300,7 +300,7 @@ def asset_statistics(returns: pd.DataFrame, weights: pd.Series, cov: pd.DataFram
         r = returns[tk]
         sd = r.std(ddof=1)
         mdd, _, _ = max_drawdown(r)
-        span_start = (r.index[0] - (r.index[1] - r.index[0])) if len(r) > 1 else r.index[0] - pd.Timedelta(days=1)
+        span_start = (r.index[0] - (r.index[1] - r.index[0])) if len(r) > 1 else r.index[0]
         row = {"ticker": tk, "annual_arith_return": r.mean() * n,
                "annual_cagr": cagr(1.0, 1 + cumulative_return(r), span_start, r.index[-1]),
                "annual_volatility": sd * np.sqrt(n),
