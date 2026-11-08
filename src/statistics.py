@@ -182,12 +182,24 @@ def drawdown_series(r: pd.Series) -> pd.Series:
 
 
 def max_drawdown(r: pd.Series) -> tuple[float, pd.Timestamp | None, pd.Timestamp | None]:
+    """Return drawdown magnitude and observed peak/trough dates.
+
+    The wealth path starts at NAV=1 immediately before the first return. If that
+    unobserved initial NAV is the peak and the portfolio never recovers to it
+    before the trough, the peak date is unknown and is reported as None rather
+    than incorrectly assigning the first losing observation as the peak.
+    """
     dd = drawdown_series(r)
     if dd.empty:
         return float("nan"), None, None
     trough = dd.idxmin()
     w = wealth_index(r)
-    peak_date = w.loc[:trough].idxmax() if dd.min() < 0 else trough
+    if dd.min() < 0:
+        pre_trough = w.loc[:trough]
+        peak_level = float(pre_trough.max())
+        peak_date = pre_trough.idxmax() if peak_level >= 1.0 - 1e-12 else None
+    else:
+        peak_date = trough
     return float(dd.min()), peak_date, trough
 
 
