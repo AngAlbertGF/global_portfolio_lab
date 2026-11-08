@@ -7,8 +7,8 @@ import pytest
 
 import src.optimization as optimization
 from src.backtesting import BacktestConfig, run_backtest
-from src.optimization import ConstraintSet, make_result, minimum_cvar, maximum_risk, risk_parity
-from src.statistics import asset_statistics, check_covariance, cagr, max_drawdown, portfolio_statistics, port_stats
+from src.optimization import ConstraintSet, maximum_risk, minimum_cvar, port_stats, risk_parity
+from src.statistics import asset_statistics, check_covariance, cagr, max_drawdown, portfolio_statistics
 
 
 def test_asset_cagr_includes_the_period_before_first_return():
