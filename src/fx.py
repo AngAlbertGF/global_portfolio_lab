@@ -88,7 +88,8 @@ def convert_to_base(prices_local: pd.Series, trading_currency: str, base_currenc
     dropped -- stock prices are never invented.
     """
     major, divisor = major_currency(trading_currency)
-    s = prices_local.dropna().astype(float) / divisor
+    s = prices_local.dropna().astype(float)
+    s = s[np.isfinite(s.to_numpy(dtype=float)) & (s.to_numpy(dtype=float) > 0)] / divisor
     s.index = pd.DatetimeIndex(s.index)
     notes: list[str] = []
     if divisor != 1.0:
