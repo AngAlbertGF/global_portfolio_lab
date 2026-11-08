@@ -99,6 +99,8 @@ def ledoit_wolf(X: np.ndarray) -> tuple[np.ndarray, float]:
 
 def estimate_cov(returns: pd.DataFrame, method: str, periods_per_year: int, lam: float = 0.97
                  ) -> tuple[pd.DataFrame, dict]:
+    if not isinstance(periods_per_year, (int, np.integer)) or isinstance(periods_per_year, bool) or periods_per_year <= 0:
+        raise ValueError("periods_per_year must be a positive integer.")
     T, p = returns.shape
     info: dict = {"method": method, "n_obs": T, "n_assets": p, "shrinkage": None, "regularized": False}
     if T < 2 or p < 1:
@@ -203,7 +205,8 @@ def rolling_period_extremes(r: pd.Series, window: int) -> dict:
 # Portfolio-level statistics
 # ---------------------------------------------------------------------------
 def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
-                         benchmark: pd.Series | None = None) -> dict:
+                         benchmark: pd.Series | None = None,
+                         period_start: pd.Timestamp | None = None) -> dict:
     n = periods_per_year
     rf_d = rf_per_period(rf_annual, n)
     r = r.dropna()
@@ -220,7 +223,8 @@ def portfolio_statistics(r: pd.Series, rf_annual: float, periods_per_year: int,
     total = cumulative_return(r)
     # CAGR uses actual elapsed time; the first return covers (prev date -> first date), so the
     # elapsed span is measured from one period before the first return date.
-    span_start = r.index[0] - (r.index[1] - r.index[0]) if len(r) > 1 else r.index[0]
+    span_start = (pd.Timestamp(period_start) if period_start is not None else
+                  r.index[0] - (r.index[1] - r.index[0]) if len(r) > 1 else r.index[0])
     g = cagr(1.0, 1.0 + total, span_start, r.index[-1])
     var95, cvar95 = historical_var_cvar(r, 0.95)
     var99, cvar99 = historical_var_cvar(r, 0.99)
@@ -293,7 +297,8 @@ def risk_decomposition(w: pd.Series, cov: pd.DataFrame) -> pd.DataFrame:
 
 def asset_statistics(returns: pd.DataFrame, weights: pd.Series, cov: pd.DataFrame, mu: pd.Series,
                      rf_annual: float, periods_per_year: int, meta: pd.DataFrame,
-                     benchmark: pd.Series | None = None) -> pd.DataFrame:
+                     benchmark: pd.Series | None = None,
+                     period_start: pd.Timestamp | None = None) -> pd.DataFrame:
     n = periods_per_year
     rf_d = rf_per_period(rf_annual, n)
     rows = []
@@ -302,7 +307,8 @@ def asset_statistics(returns: pd.DataFrame, weights: pd.Series, cov: pd.DataFram
         r = returns[tk]
         sd = r.std(ddof=1)
         mdd, _, _ = max_drawdown(r)
-        span_start = r.index[0] - (r.index[1] - r.index[0]) if len(r) > 1 else r.index[0]
+        span_start = (pd.Timestamp(period_start) if period_start is not None else
+                      r.index[0] - (r.index[1] - r.index[0]) if len(r) > 1 else r.index[0])
         row = {"ticker": tk, "annual_arith_return": r.mean() * n,
                "annual_cagr": cagr(1.0, 1 + cumulative_return(r), span_start, r.index[-1]),
                "annual_volatility": sd * np.sqrt(n),
@@ -346,6 +352,16 @@ def concentration(weights: pd.Series, market_of: dict[str, str], currency_of: di
 def block_bootstrap_ci(r: pd.Series, rf_annual: float, n: int, n_boot: int = 1000, block: int = 21,
                        level: float = 0.95, seed: int = 7) -> pd.DataFrame:
     """Circular block bootstrap CIs (preserves short-range dependence) for key annual statistics."""
+    if len(r) < 2 or not np.isfinite(r.to_numpy(dtype=float)).all() or (r < -1.0).any():
+        raise ValueError("Bootstrap requires at least two finite simple returns, each greater than -100%.")
+    if not isinstance(n, (int, np.integer)) or isinstance(n, bool) or n <= 0:
+        raise ValueError("periods_per_year must be a positive integer.")
+    if not isinstance(n_boot, (int, np.integer)) or isinstance(n_boot, bool) or n_boot < 1:
+        raise ValueError("n_boot must be a positive integer.")
+    if not isinstance(block, (int, np.integer)) or isinstance(block, bool) or block < 1:
+        raise ValueError("block must be a positive integer.")
+    if not np.isfinite(level) or not 0.0 < level < 1.0:
+        raise ValueError("The confidence level must lie strictly between 0 and 1.")
     rng = np.random.default_rng(seed)
     x = r.values
     T = len(x)
