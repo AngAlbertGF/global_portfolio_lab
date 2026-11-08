@@ -1,0 +1,51 @@
+"""Regression tests for the original walk-forward backtest engine."""
+import numpy as np
+import pandas as pd
+import pytest
+
+from src.backtesting import BacktestConfig, run_backtest
+from src.optimization import ConstraintSet
+
+
+def test_backtest_charges_cost_as_nav_deduction_and_drifted_weights():
+    dates = pd.bdate_range("2024-01-02", periods=80)
+    asset_a = np.full(len(dates), 100.0)
+    asset_b = np.full(len(dates), 100.0)
+    for i in range(1, len(dates)):
+        asset_a[i] = asset_a[i - 1] * 1.02
+        asset_b[i] = asset_b[i - 1]
+    prices = pd.DataFrame({"A": asset_a, "B": asset_b}, index=dates)
+
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0}, mode="global_only")
+    weights = pd.Series({"A": 0.5, "B": 0.5})
+    cfg = BacktestConfig(window=20, rebalance="monthly", cost_bps=100.0, slippage_bps=0.0,
+                         strategies=("user_rebalanced",), periods_per_year=252)
+
+    result = run_backtest(prices, weights, cs, rf_annual=0.0, cfg=cfg)
+    assert not result.returns.empty
+    gross_first = 0.5 * 0.02
+    expected_first = (1.0 + gross_first) * (1.0 - 0.01) - 1.0
+    assert result.turnover.iloc[0, 0] == pytest.approx(1.0)
+    assert result.returns.iloc[0, 0] == pytest.approx(expected_first)
+
+    # No rebalance between the first and second test observations. Asset A's
+    # weight drifts upward after its 2% gain, so the next portfolio return
+    # must use the drifted weight rather than the original 50%.
+    drifted_a = 0.5 * 1.02 / (1.0 + gross_first)
+    expected_second = drifted_a * 0.02
+    assert result.turnover.iloc[1, 0] == pytest.approx(0.0)
+    assert result.returns.iloc[1, 0] == pytest.approx(expected_second)
+
+
+def test_backtest_rejects_invalid_weights_and_costs():
+    dates = pd.bdate_range("2024-01-02", periods=80)
+    prices = pd.DataFrame({"A": np.arange(100.0, 180.0), "B": np.arange(100.0, 180.0)}, index=dates)
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0}, mode="global_only")
+    bad_weights = pd.Series({"A": 0.8, "B": 0.8})
+    cfg = BacktestConfig(window=20, strategies=("user_rebalanced",))
+    with pytest.raises(ValueError, match="weights"):
+        run_backtest(prices, bad_weights, cs, 0.05, cfg)
+    good_weights = pd.Series({"A": 0.5, "B": 0.5})
+    with pytest.raises(ValueError, match="non-negative"):
+        run_backtest(prices, good_weights, cs, 0.05,
+                     BacktestConfig(window=20, cost_bps=-1.0, strategies=("user_rebalanced",)))
