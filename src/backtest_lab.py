@@ -306,16 +306,20 @@ def xirr(dates: list[pd.Timestamp], amounts: list[float]) -> float:
         return float("nan")
 
 
-def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabConfig) -> dict:
+def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabConfig,
+             period_start: pd.Timestamp | None = None) -> dict:
     v, twr = run["value"], run["twr"]
     n = cfg.periods_per_year
     T = len(twr)
-    years = max((R_index[-1] - R_index[0]).days / 365.25, 1 / 365.25)
+    start_date = (pd.Timestamp(period_start) if period_start is not None else
+                  R_index[0] - (R_index[1] - R_index[0]) if len(R_index) > 1 else
+                  R_index[0] - pd.Timedelta(days=1))
+    years = max((R_index[-1] - start_date).days / 365.25, 1 / 365.25)
     growth = float(np.prod(1 + twr.values))
     sd = float(twr.std(ddof=1)) if T > 1 else float("nan")
     rf_d = rf_per_period(cfg.rf_annual, n)
     mdd = max_drawdown(twr)[0] if T > 1 else float("nan")
-    flow_dates = [R_index[0] - pd.Timedelta(days=1)] + [d for d, f in flows.items() if f > 0 and d != R_index[0]]
+    flow_dates = [start_date] + [d for d, f in flows.items() if f > 0 and d != R_index[0]]
     flow_amts = [-cfg.capital] + [-float(flows[d]) for d in flow_dates[1:]]
     irr = xirr(flow_dates + [R_index[-1]], flow_amts + [float(v.iloc[-1])])
     return {"final_value": float(v.iloc[-1]), "invested": float(run["invested"].iloc[-1]),
@@ -349,6 +353,7 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
     cov_tr = estimate_cov(tr, cfg.cov_estimator, cfg.periods_per_year, cfg.ewma_lambda)[0]
     n = cfg.periods_per_year
     runs: dict[str, StrategyRun] = {}
+    test_period_start = px.index[px.index.get_loc(te.index[0]) - 1]
     for i, key in enumerate(cfg.strategies):
         label = t(STRATEGIES.get(key, key))
         w0, why = strategy_weights(key, tr, cs, uw, cfg)
@@ -365,7 +370,7 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
                 hist = hist.iloc[-cfg.rolling_obs:]
             return strategy_weights(key, hist, cs, uw, cfg)
         sim = _simulate(key, te, cs, w0, decisions, flows, cfg, fvec, reestimate)
-        realized = summarize(sim, te.index, flows, cfg)
+        realized = summarize(sim, te.index, flows, cfg, period_start=test_period_start)
         # forecast from the training window only
         port_tr = tr.values @ w0
         mu_p = float(mu_tr.reindex(cs.tickers).values @ w0) / n
