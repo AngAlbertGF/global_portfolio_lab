@@ -94,7 +94,7 @@ def test_backtest_rejects_nonpositive_prices():
 def test_short_portfolio_loss_beyond_nav_stops_backtest():
     dates = pd.bdate_range("2024-01-02", periods=80)
     prices = pd.DataFrame({"A": 100.0, "B": 100.0}, index=dates)
-    prices.loc[dates[21]:, "B"] = 400.0
+    prices.loc[dates[22]:, "B"] = 400.0
     cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0},
                              mode="global_only", long_only=False, min_weight=-1.0)
     weights = pd.Series({"A": 1.5, "B": -0.5})
