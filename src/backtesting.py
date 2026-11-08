@@ -124,7 +124,7 @@ def run_backtest(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, rf_
         raise ValueError("User portfolio weights must be finite and satisfy the configured constraints.")
 
     period_end = rets.index.to_series().resample(REBALANCE_RULES[cfg.rebalance]).last().dropna()
-    pos_ends = rets.index.get_indexer(pd.DatetimeIndex(period_end.values))
+    pos_ends = rets.index.get_indexer(pd.DatetimeIndex(period_end.array))
     decision_pos = sorted({p + 1 for p in pos_ends if cfg.window <= p + 1 < len(rets)})
     if not decision_pos:
         return BacktestResult(pd.DataFrame(), pd.DataFrame(), {}, pd.DataFrame(), None, None, 0,
