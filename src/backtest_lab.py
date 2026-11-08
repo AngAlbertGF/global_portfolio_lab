@@ -173,7 +173,7 @@ def decision_dates(test_index: pd.DatetimeIndex, rebalance: str) -> list[pd.Time
     out = [test_index[0]]
     if rebalance in REBALANCE_RULES:
         ends = test_index.to_series().resample(REBALANCE_RULES[rebalance]).last().dropna()
-        for e in ends.values:
+        for e in ends.array:
             pos = test_index.searchsorted(pd.Timestamp(e), side="right")
             if 0 < pos < len(test_index):
                 out.append(test_index[pos])
