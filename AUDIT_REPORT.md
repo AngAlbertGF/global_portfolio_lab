@@ -2,9 +2,9 @@
 
 ## Status
 
-This audit branch contains targeted corrections, regression tests, documentation updates, and a GitHub Actions workflow. The changes have been committed to `audit/quantitative-correctness-2026-11`; the default `main` branch has not been modified.
+This audit was implemented on `audit/quantitative-correctness-2026-11` and submitted for publication through pull request [#2](https://github.com/AngAlbertGF/global_portfolio_lab/pull/2). The default branch is only changed through the reviewed merge of that pull request.
 
-**Test execution is not yet verified.** The repository could be read and updated through GitHub, but this session did not have a repository runtime in which to execute pytest. A workflow was added to run `pytest -q --tb=short` under Python 3.13. At the time this report was written, GitHub's Actions API had not returned a run for the audit branch. Do not interpret the tests as passing until the workflow completes successfully.
+**Validation passed.** GitHub Actions run [42524254490](https://github.com/AngAlbertGF/global_portfolio_lab/actions/runs/42524254490), on commit `d588750b44480d272352a7bf186381b9e75be0b3`, completed successfully under Python 3.13.18. The command `pytest -q --tb=short` reported **118 passed, 3 skipped, 0 failed** in 59.99 seconds. Eight pandas timezone-series deprecation warnings were emitted by existing UI tests; they did not fail the suite. The subsequent translation-catalog formatting cleanup preserves the same seven translations and does not change application logic.
 
 ## Findings corrected in this branch
 
