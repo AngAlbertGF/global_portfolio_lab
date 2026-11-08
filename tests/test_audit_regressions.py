@@ -24,6 +24,18 @@ def test_asset_cagr_includes_the_period_before_first_return():
     assert actual == pytest.approx(expected)
 
 
+def test_asset_cagr_is_undefined_with_only_one_return_observation():
+    idx = pd.DatetimeIndex([pd.Timestamp("2024-01-02")])
+    returns = pd.DataFrame({"A": [0.10]}, index=idx)
+    weights = pd.Series({"A": 1.0})
+    cov = pd.DataFrame([[0.04]], index=["A"], columns=["A"])
+    mu = pd.Series({"A": 0.10})
+
+    actual = asset_statistics(returns, weights, cov, mu, 0.0, 252, pd.DataFrame()).loc["A", "annual_cagr"]
+
+    assert np.isnan(actual)
+
+
 def test_max_drawdown_peak_date_can_be_initial_capital_date():
     idx = pd.bdate_range("2024-01-02", periods=2)
     r = pd.Series([-0.10, -0.10], index=idx)
