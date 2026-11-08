@@ -5,6 +5,7 @@ ellas. Un óptimo dentro de muestra no es un pronóstico ni una recomendación.<
 disponibilidad, y el proveedor puede revisar las historias ajustadas.</li>
 <li>Las bolsas cierran a distintas horas, por lo que las correlaciones diarias entre mercados se subestiman (la
 frecuencia semanal reduce este efecto).</li>
+<li>El filtrado por calendario común puede crear intervalos de rendimiento de varias sesiones. Por ello, la anualización fija 252/52 es una aproximación; los huecos importantes pueden distorsionar medias, volatilidad y covarianza anualizadas. Cuando los huecos sean sustanciales, es preferible usar datos semanales o un estimador que considere explícitamente la duración de cada intervalo.</li>
 <li>Sesgo de supervivencia: el análisis usa valores elegidos hoy.</li>
 <li>El portafolio de máximo riesgo es solo una referencia matemática.</li>
 </ul>
