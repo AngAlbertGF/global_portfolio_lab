@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.statistics import block_bootstrap_ci, check_covariance, cov_to_corr, estimate_cov, estimate_mu, \
-    historical_var_cvar, ledoit_wolf, max_drawdown, portfolio_statistics, rf_markowitz, rf_per_period, \
+from src.statistics import asset_statistics, block_bootstrap_ci, check_covariance, cov_to_corr, estimate_cov, estimate_mu, \
+    ewma_weights, historical_var_cvar, ledoit_wolf, max_drawdown, portfolio_statistics, rf_markowitz, rf_per_period, \
     risk_decomposition
 from tests.conftest import returns_frame
 
@@ -96,3 +96,34 @@ def test_bootstrap_ci_contains_point_estimate():
     R = returns_frame(T=800)
     ci = block_bootstrap_ci(R.mean(axis=1), 0.05, 252, n_boot=200)
     assert (ci["ci_low"] <= ci["estimate"]).all() and (ci["estimate"] <= ci["ci_high"]).all()
+
+
+
+def test_estimator_inputs_fail_fast():
+    with pytest.raises(ValueError):
+        rf_per_period(-1.0, 252)
+    with pytest.raises(ValueError):
+        rf_per_period(0.05, 0)
+    with pytest.raises(ValueError):
+        ewma_weights(0, 0.97)
+    with pytest.raises(ValueError):
+        ewma_weights(10, 1.01)
+    with pytest.raises(ValueError):
+        estimate_cov(pd.DataFrame({"A": [0.01, np.nan]}), "sample", 252)
+    with pytest.raises(ValueError):
+        estimate_mu(pd.DataFrame({"A": []}), "arithmetic", 252)
+    with pytest.raises(ValueError):
+        historical_var_cvar(pd.Series([0.01, -0.01]), 1.0)
+
+
+def test_asset_cagr_counts_the_first_return_interval():
+    idx = pd.bdate_range("2024-01-02", periods=3)
+    returns = pd.DataFrame({"A": [0.10, 0.10, 0.10]}, index=idx)
+    weights = pd.Series({"A": 1.0})
+    cov = pd.DataFrame([[0.01]], index=["A"], columns=["A"])
+    mu = pd.Series({"A": 0.10})
+    meta = pd.DataFrame(index=["A"])
+    got = asset_statistics(returns, weights, cov, mu, 0.0, 252, meta).loc["A", "annual_cagr"]
+    start = idx[0] - (idx[1] - idx[0])
+    expected = (1.1 ** 3) ** (365.25 / (idx[-1] - start).days) - 1
+    assert got == pytest.approx(expected)
