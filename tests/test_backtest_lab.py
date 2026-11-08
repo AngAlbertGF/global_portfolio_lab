@@ -145,3 +145,19 @@ def test_backtest_lab_rejects_infeasible_user_weights_and_negative_costs(setup):
     cfg.cost_bps = -1.0
     with pytest.raises(ValueError, match="costs"):
         run_lab(prices, global_weights(p), cs, cfg)
+
+
+
+def test_predictive_lab_stops_short_portfolio_after_nav_breach():
+    dates = pd.bdate_range("2024-01-02", periods=100)
+    prices = pd.DataFrame({"A": 100.0, "B": 100.0}, index=dates)
+    prices.loc[dates[70]:, "B"] = 400.0
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0},
+                             mode="global_only", long_only=False, min_weight=-1.0)
+    weights = pd.Series({"A": 1.5, "B": -0.5})
+    cfg = LabConfig(train_start=dates[0].date(), train_end=dates[69].date(),
+                    test_start=dates[70].date(), test_end=dates[-1].date(),
+                    strategies=("user",), capital=100_000.0, contribution=0.0, rebalance="none",
+                    periods_per_year=252, n_paths=10)
+    with pytest.raises(RuntimeError, match="NAV became non-positive"):
+        run_lab(prices, weights, cs, cfg)
