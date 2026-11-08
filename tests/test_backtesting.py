@@ -63,3 +63,28 @@ def test_backtest_does_not_run_infeasible_equal_weight_strategy():
     cfg = BacktestConfig(window=20, strategies=("equal_weight",))
     with pytest.raises(RuntimeError, match="no valid feasible target"):
         run_backtest(prices, feasible_user_weights, cs, 0.0, cfg)
+
+
+
+def test_backtest_ignores_unrelated_incomplete_price_columns():
+    dates = pd.bdate_range("2024-01-02", periods=80)
+    prices = pd.DataFrame({"A": np.linspace(100.0, 120.0, len(dates)),
+                           "B": np.linspace(100.0, 110.0, len(dates))}, index=dates)
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0}, mode="global_only")
+    weights = pd.Series({"A": 0.5, "B": 0.5})
+    cfg = BacktestConfig(window=20, strategies=("user_rebalanced",))
+    baseline = run_backtest(prices, weights, cs, 0.0, cfg)
+    prices["UNRELATED"] = np.nan
+    with_extra = run_backtest(prices, weights, cs, 0.0, cfg)
+    pd.testing.assert_frame_equal(with_extra.returns, baseline.returns)
+
+
+def test_backtest_rejects_nonpositive_prices():
+    dates = pd.bdate_range("2024-01-02", periods=80)
+    prices = pd.DataFrame({"A": np.linspace(100.0, 120.0, len(dates)),
+                           "B": np.linspace(100.0, 110.0, len(dates))}, index=dates)
+    prices.iloc[20, 0] = 0.0
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0}, mode="global_only")
+    with pytest.raises(ValueError, match="strictly positive"):
+        run_backtest(prices, pd.Series({"A": 0.5, "B": 0.5}), cs, 0.0,
+                     BacktestConfig(window=20, strategies=("user_rebalanced",)))
