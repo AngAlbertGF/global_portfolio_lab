@@ -165,9 +165,14 @@ def conversion_detail(prices_local: pd.Series, trading_currency: str, base_curre
 
 
 def triangulate(usd_to_base: pd.Series, usd_to_foreign: pd.Series) -> pd.Series:
-    """foreign->base = (base per USD) / (foreign per USD), on common dates only."""
-    common = usd_to_base.dropna().index.intersection(usd_to_foreign.dropna().index)
-    return (usd_to_base.loc[common] / usd_to_foreign.loc[common]).rename("triangulated")
+    """foreign->base = (base per USD) / (foreign per USD), on common valid dates only."""
+    a = usd_to_base.dropna().astype(float)
+    b = usd_to_foreign.dropna().astype(float)
+    a = a[np.isfinite(a.to_numpy(dtype=float)) & (a.to_numpy(dtype=float) > 0)]
+    b = b[np.isfinite(b.to_numpy(dtype=float)) & (b.to_numpy(dtype=float) > 0)]
+    common = a.index.intersection(b.index)
+    out = (a.loc[common] / b.loc[common]).replace([np.inf, -np.inf], np.nan).dropna()
+    return out[out > 0].rename("triangulated")
 
 
 def stale_fx_flags(fx: pd.Series, max_gap_days: int = 5, as_of: date | None = None) -> list[str]:
