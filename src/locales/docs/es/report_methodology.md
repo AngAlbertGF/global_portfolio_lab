@@ -13,5 +13,6 @@ con r<sub>f</sub> = (1+R<sub>f</sub>)<sup>1/n</sup> &minus; 1 a partir de la tas
 <li><b>Restricciones:</b> presupuestos fijos por mercado &Sigma;<sub>i&isin;m</sub> w<sub>i</sub> = A<sub>m</sub>, inversión
 total, solo posiciones largas salvo que se configure otra cosa; cada solución se verifica por residuales.</li>
 <li><b>Descomposición del riesgo (Euler):</b> &sigma; = &Sigma;<sub>i</sub> w<sub>i</sub>(&Sigma;w)<sub>i</sub>/&sigma;.</li>
+<li><b>Paridad de riesgo:</b> minimiza la dispersión cuadrática de las contribuciones porcentuales de Euler a la varianza respecto a 1/N, bajo las restricciones configuradas; la solución SLSQP de múltiples puntos iniciales es local y no está certificada como óptimo global.</li>
 <li><b>VaR / CVaR:</b> históricos, por periodo, reportados como pérdidas positivas.</li>
 </ul>
