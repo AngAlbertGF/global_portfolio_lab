@@ -335,7 +335,47 @@ def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabCo
 # ---------------------------------------------------------------------------
 def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: LabConfig,
             foreign: dict[str, bool] | None = None, benchmark_prices: pd.Series | None = None) -> LabResult:
-    px = prices[cs.tickers].dropna(how="any")
+    if not isinstance(prices.index, pd.DatetimeIndex) or prices.index.has_duplicates:
+        raise ValueError("Backtest prices must have a unique DatetimeIndex.")
+    if cs.n == 0 or len(set(cs.tickers)) != cs.n:
+        raise ValueError("The backtest constraint universe must contain unique securities.")
+    missing_tickers = [tk for tk in cs.tickers if tk not in prices.columns]
+    if missing_tickers:
+        raise ValueError(f"Price history is missing securities: {', '.join(missing_tickers)}")
+    if cs.feasibility_problems():
+        raise ValueError("Backtest constraints are infeasible: " + " ".join(cs.feasibility_problems()))
+    if cfg.mode not in ("static", "walk_forward") or cfg.window not in ("expanding", "rolling"):
+        raise ValueError("Unsupported backtest mode or estimation window.")
+    if cfg.rebalance not in ("none", *REBALANCE_RULES):
+        raise ValueError("Unsupported backtest rebalance frequency.")
+    if cfg.projection not in ("normal", "bootstrap"):
+        raise ValueError("Projection must be 'normal' or 'bootstrap'.")
+    if not cfg.strategies or len(set(cfg.strategies)) != len(cfg.strategies) or set(cfg.strategies) - set(STRATEGIES):
+        raise ValueError("Backtest strategies must be a non-empty, unique subset of the supported strategies.")
+    if cfg.train_start >= cfg.train_end or cfg.test_start <= cfg.train_end or cfg.test_start > cfg.test_end:
+        raise ValueError("Backtest windows must satisfy train_start < train_end < test_start <= test_end.")
+    integer_settings = (cfg.periods_per_year, cfg.rolling_obs, cfg.n_paths, cfg.block)
+    if any(not isinstance(v, (int, np.integer)) or isinstance(v, bool) for v in integer_settings):
+        raise ValueError("Periods per year, rolling observations, path count, and block length must be integers.")
+    if cfg.periods_per_year <= 0 or cfg.rolling_obs < 2 or cfg.n_paths < 1 or cfg.block < 1:
+        raise ValueError("Periods per year and path count must be positive; rolling observations >= 2 and block >= 1.")
+    costs = np.asarray([cfg.cost_bps, cfg.slippage_bps, cfg.fx_cost_bps], dtype=float)
+    if not np.isfinite(costs).all() or np.any(costs < 0):
+        raise ValueError("Transaction, slippage, and FX costs must be finite and non-negative.")
+    if not np.isfinite(cfg.capital) or cfg.capital <= 0 or not np.isfinite(cfg.contribution) or cfg.contribution < 0:
+        raise ValueError("Initial capital must be positive and monthly contributions must be finite and non-negative.")
+    if not np.isfinite(cfg.rf_annual) or cfg.rf_annual <= -1.0:
+        raise ValueError("The effective annual risk-free rate must be finite and greater than -100%.")
+    if not np.isfinite(cfg.ewma_lambda) or not 0.0 < cfg.ewma_lambda <= 1.0:
+        raise ValueError("EWMA lambda must lie in (0, 1].")
+    if not np.isfinite(cfg.target_vol) or cfg.target_vol < 0:
+        raise ValueError("Target volatility must be finite and non-negative.")
+    px = prices.loc[:, cs.tickers].sort_index()
+    if np.isinf(px.to_numpy(dtype=float)).any():
+        raise ValueError("Price history contains infinite values.")
+    px = px.dropna(how="any")
+    if px.empty or (px <= 0).any().any():
+        raise ValueError("Backtest requires positive prices on at least two complete dates.")
     rets = (px / px.shift(1) - 1).iloc[1:]
     tr = rets.loc[(rets.index >= pd.Timestamp(cfg.train_start)) & (rets.index <= pd.Timestamp(cfg.train_end))]
     te = rets.loc[(rets.index >= pd.Timestamp(cfg.test_start)) & (rets.index <= pd.Timestamp(cfg.test_end))
@@ -345,7 +385,11 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
         raise ValueError(t("The training window has only {n} return observations (minimum 60).", n=len(tr)))
     if len(te) < 5:
         raise ValueError(t("The test window has only {n} return observations (minimum 5).", n=len(te)))
-    uw = user_w.reindex(cs.tickers).fillna(0.0).values
+    if not set(cs.tickers).issubset(set(user_w.index)):
+        raise ValueError("User weights are missing one or more securities in the backtest universe.")
+    uw = user_w.reindex(cs.tickers).to_numpy(dtype=float)
+    if not np.isfinite(uw).all() or not cs.is_feasible(uw):
+        raise ValueError("User weights must be finite and satisfy the configured portfolio constraints.")
     fvec = np.array([1.0 if (foreign or {}).get(tk) else 0.0 for tk in cs.tickers])
     flows = contribution_flows(te.index, cfg.contribution)
     decisions = decision_dates(te.index, cfg.rebalance)
