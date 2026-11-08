@@ -137,6 +137,8 @@ def test_cagr_uses_actual_pre_sample_price_date_for_irregular_intervals():
     stats = portfolio_statistics(r, 0.0, 252, period_start=period_start)
     expected = (1.1 ** 3) ** (365.25 / (idx[-1] - period_start).days) - 1
     assert stats["annual_geometric_return_cagr"] == pytest.approx(expected)
+    assert np.isnan(stats["skewness"])
+    assert np.isnan(stats["excess_kurtosis"])
 
     returns = pd.DataFrame({"A": r})
     weights = pd.Series({"A": 1.0})
