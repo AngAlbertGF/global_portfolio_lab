@@ -103,3 +103,18 @@ def test_helpers():
     assert np.allclose(paths[:, -1], 1100.0)
     ed = entry_date_sensitivity(pd.DataFrame({"A": 0.001}, index=idx), {"x": np.array([1.0])}, 100.0)
     assert len(ed) == 3 and ed["x"].is_monotonic_decreasing
+
+
+
+def test_missing_benchmark_returns_are_not_filled_with_zero(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    complete = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=prices.iloc[:, 0])
+    assert complete.benchmark is not None
+
+    incomplete_benchmark = prices.iloc[:, 0].copy()
+    missing_date = prices.loc[prices.index >= "2026-01-01"].index[5]
+    incomplete_benchmark.loc[missing_date] = np.nan
+    incomplete = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=incomplete_benchmark)
+    assert incomplete.benchmark is None
+    assert any("Benchmark omitted" in note for note in incomplete.notes)
