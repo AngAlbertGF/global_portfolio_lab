@@ -5,7 +5,7 @@ de la conversión, así que 1 + r<sub>base</sub> = (1 + r<sub>local</sub>)(1 + r
 <li><b>Calendario:</b> solo fechas de observación comunes (sin rellenar precios). El tipo de cambio puede arrastrarse
 hasta el límite de antigüedad configurado; se eliminan las observaciones sin un tipo de cambio admisible.</li>
 <li><b>Rendimientos:</b> r<sub>t</sub> = P<sub>t</sub>/P<sub>t-1</sub> &minus; 1; media anual = n&middot;media, volatilidad
-anual = &radic;n&middot;desv. est. (n = 252 diaria o 52 semanal, una aproximación); el CAGR usa el tiempo transcurrido
+anual = &radic;n&middot;desv. est. (n = 252 diaria o 52 semanal, una aproximación); los huecos del calendario común pueden hacer que rendimientos consecutivos abarquen varias sesiones, aunque la anualización conserva este factor fijo. El CAGR usa el tiempo transcurrido
 real.</li>
 <li><b>Portafolio:</b> pesos constantes (rebalanceo cada periodo), &mu;<sub>p</sub> = w&prime;&mu;,
 &sigma;<sub>p</sub><sup>2</sup> = w&prime;&Sigma;w, Sharpe = (&mu;<sub>p</sub> &minus; n&middot;r<sub>f</sub>)/&sigma;<sub>p</sub>
