@@ -173,7 +173,7 @@ def decision_dates(test_index: pd.DatetimeIndex, rebalance: str) -> list[pd.Time
     out = [test_index[0]]
     if rebalance in REBALANCE_RULES:
         ends = test_index.to_series().resample(REBALANCE_RULES[rebalance]).last().dropna()
-        for e in ends.values:
+        for e in ends.array:
             pos = test_index.searchsorted(pd.Timestamp(e), side="right")
             if 0 < pos < len(test_index):
                 out.append(test_index[pos])
@@ -240,7 +240,12 @@ def _simulate(key: str, R: pd.DataFrame, cs: ConstraintSet, w0: np.ndarray, deci
         gain = h * r
         contrib += gain
         h = h + gain
-        W_end = h.sum()
+        W_end = float(h.sum())
+        if not np.isfinite(W_end) or W_end <= 0.0:
+            raise RuntimeError(
+                f"Portfolio NAV became non-positive on {d.date()}; leveraged/short margin calls "
+                "and liquidation are not modelled."
+            )
         # time-weighted return: the day's flow is excluded, the day's costs are included
         base = W_prev + flow
         twr.append(W_end / base - 1 if base > 0 else 0.0)
@@ -306,16 +311,20 @@ def xirr(dates: list[pd.Timestamp], amounts: list[float]) -> float:
         return float("nan")
 
 
-def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabConfig) -> dict:
+def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabConfig,
+             period_start: pd.Timestamp | None = None) -> dict:
     v, twr = run["value"], run["twr"]
     n = cfg.periods_per_year
     T = len(twr)
-    years = max((R_index[-1] - R_index[0]).days / 365.25, 1 / 365.25)
+    start_date = (pd.Timestamp(period_start) if period_start is not None else
+                  R_index[0] - (R_index[1] - R_index[0]) if len(R_index) > 1 else
+                  R_index[0] - pd.Timedelta(days=1))
+    years = max((R_index[-1] - start_date).days / 365.25, 1 / 365.25)
     growth = float(np.prod(1 + twr.values))
     sd = float(twr.std(ddof=1)) if T > 1 else float("nan")
     rf_d = rf_per_period(cfg.rf_annual, n)
     mdd = max_drawdown(twr)[0] if T > 1 else float("nan")
-    flow_dates = [R_index[0] - pd.Timedelta(days=1)] + [d for d, f in flows.items() if f > 0 and d != R_index[0]]
+    flow_dates = [start_date] + [d for d, f in flows.items() if f > 0 and d != R_index[0]]
     flow_amts = [-cfg.capital] + [-float(flows[d]) for d in flow_dates[1:]]
     irr = xirr(flow_dates + [R_index[-1]], flow_amts + [float(v.iloc[-1])])
     return {"final_value": float(v.iloc[-1]), "invested": float(run["invested"].iloc[-1]),
@@ -331,7 +340,47 @@ def summarize(run: dict, R_index: pd.DatetimeIndex, flows: pd.Series, cfg: LabCo
 # ---------------------------------------------------------------------------
 def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: LabConfig,
             foreign: dict[str, bool] | None = None, benchmark_prices: pd.Series | None = None) -> LabResult:
-    px = prices[cs.tickers].dropna(how="any")
+    if not isinstance(prices.index, pd.DatetimeIndex) or prices.index.has_duplicates:
+        raise ValueError("Backtest prices must have a unique DatetimeIndex.")
+    if cs.n == 0 or len(set(cs.tickers)) != cs.n:
+        raise ValueError("The backtest constraint universe must contain unique securities.")
+    missing_tickers = [tk for tk in cs.tickers if tk not in prices.columns]
+    if missing_tickers:
+        raise ValueError(f"Price history is missing securities: {', '.join(missing_tickers)}")
+    if cs.feasibility_problems():
+        raise ValueError("Backtest constraints are infeasible: " + " ".join(cs.feasibility_problems()))
+    if cfg.mode not in ("static", "walk_forward") or cfg.window not in ("expanding", "rolling"):
+        raise ValueError("Unsupported backtest mode or estimation window.")
+    if cfg.rebalance not in ("none", *REBALANCE_RULES):
+        raise ValueError("Unsupported backtest rebalance frequency.")
+    if cfg.projection not in ("normal", "bootstrap"):
+        raise ValueError("Projection must be 'normal' or 'bootstrap'.")
+    if not cfg.strategies or len(set(cfg.strategies)) != len(cfg.strategies) or set(cfg.strategies) - set(STRATEGIES):
+        raise ValueError("Backtest strategies must be a non-empty, unique subset of the supported strategies.")
+    if cfg.train_start >= cfg.train_end or cfg.test_start <= cfg.train_end or cfg.test_start > cfg.test_end:
+        raise ValueError("Backtest windows must satisfy train_start < train_end < test_start <= test_end.")
+    integer_settings = (cfg.periods_per_year, cfg.rolling_obs, cfg.n_paths, cfg.block)
+    if any(not isinstance(v, (int, np.integer)) or isinstance(v, bool) for v in integer_settings):
+        raise ValueError("Periods per year, rolling observations, path count, and block length must be integers.")
+    if cfg.periods_per_year <= 0 or cfg.rolling_obs < 2 or cfg.n_paths < 1 or cfg.block < 1:
+        raise ValueError("Periods per year and path count must be positive; rolling observations >= 2 and block >= 1.")
+    costs = np.asarray([cfg.cost_bps, cfg.slippage_bps, cfg.fx_cost_bps], dtype=float)
+    if not np.isfinite(costs).all() or np.any(costs < 0):
+        raise ValueError("Transaction, slippage, and FX costs must be finite and non-negative.")
+    if not np.isfinite(cfg.capital) or cfg.capital <= 0 or not np.isfinite(cfg.contribution) or cfg.contribution < 0:
+        raise ValueError("Initial capital must be positive and monthly contributions must be finite and non-negative.")
+    if not np.isfinite(cfg.rf_annual) or cfg.rf_annual <= -1.0:
+        raise ValueError("The effective annual risk-free rate must be finite and greater than -100%.")
+    if not np.isfinite(cfg.ewma_lambda) or not 0.0 < cfg.ewma_lambda <= 1.0:
+        raise ValueError("EWMA lambda must lie in (0, 1].")
+    if not np.isfinite(cfg.target_vol) or cfg.target_vol < 0:
+        raise ValueError("Target volatility must be finite and non-negative.")
+    px = prices.loc[:, cs.tickers].sort_index()
+    if np.isinf(px.to_numpy(dtype=float)).any():
+        raise ValueError("Price history contains infinite values.")
+    px = px.dropna(how="any")
+    if px.empty or (px <= 0).any().any():
+        raise ValueError("Backtest requires positive prices on at least two complete dates.")
     rets = (px / px.shift(1) - 1).iloc[1:]
     tr = rets.loc[(rets.index >= pd.Timestamp(cfg.train_start)) & (rets.index <= pd.Timestamp(cfg.train_end))]
     te = rets.loc[(rets.index >= pd.Timestamp(cfg.test_start)) & (rets.index <= pd.Timestamp(cfg.test_end))
@@ -341,7 +390,11 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
         raise ValueError(t("The training window has only {n} return observations (minimum 60).", n=len(tr)))
     if len(te) < 5:
         raise ValueError(t("The test window has only {n} return observations (minimum 5).", n=len(te)))
-    uw = user_w.reindex(cs.tickers).fillna(0.0).values
+    if not set(cs.tickers).issubset(set(user_w.index)):
+        raise ValueError("User weights are missing one or more securities in the backtest universe.")
+    uw = user_w.reindex(cs.tickers).to_numpy(dtype=float)
+    if not np.isfinite(uw).all() or not cs.is_feasible(uw):
+        raise ValueError("User weights must be finite and satisfy the configured portfolio constraints.")
     fvec = np.array([1.0 if (foreign or {}).get(tk) else 0.0 for tk in cs.tickers])
     flows = contribution_flows(te.index, cfg.contribution)
     decisions = decision_dates(te.index, cfg.rebalance)
@@ -349,6 +402,7 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
     cov_tr = estimate_cov(tr, cfg.cov_estimator, cfg.periods_per_year, cfg.ewma_lambda)[0]
     n = cfg.periods_per_year
     runs: dict[str, StrategyRun] = {}
+    test_period_start = px.index[px.index.get_loc(te.index[0]) - 1]
     for i, key in enumerate(cfg.strategies):
         label = t(STRATEGIES.get(key, key))
         w0, why = strategy_weights(key, tr, cs, uw, cfg)
@@ -365,7 +419,7 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
                 hist = hist.iloc[-cfg.rolling_obs:]
             return strategy_weights(key, hist, cs, uw, cfg)
         sim = _simulate(key, te, cs, w0, decisions, flows, cfg, fvec, reestimate)
-        realized = summarize(sim, te.index, flows, cfg)
+        realized = summarize(sim, te.index, flows, cfg, period_start=test_period_start)
         # forecast from the training window only
         port_tr = tr.values @ w0
         mu_p = float(mu_tr.reindex(cs.tickers).values @ w0) / n
@@ -396,13 +450,19 @@ def run_lab(prices: pd.DataFrame, user_w: pd.Series, cs: ConstraintSet, cfg: Lab
                                 sim["turnover"], sim["costs"], train_value, forecast, realized, sim["notes"])
     bench = None
     if benchmark_prices is not None and not benchmark_prices.dropna().empty:
-        b = benchmark_prices.dropna()
-        br = (b / b.shift(1) - 1).reindex(te.index).fillna(0.0)
-        bvals, cur = [], 0.0
-        for k, d in enumerate(te.index):
-            cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
-            bvals.append(cur)
-        bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        b = benchmark_prices.dropna().sort_index()
+        br = (b / b.shift(1) - 1).reindex(te.index)
+        # Missing benchmark observations are not zero returns. A zero-fill would
+        # fabricate performance (and the next available observation would span
+        # multiple sessions), so only report a benchmark on a complete test grid.
+        if br.notna().all() and np.isfinite(br.to_numpy(dtype=float)).all() and (br >= -1.0).all():
+            bvals, cur = [], 0.0
+            for k, d in enumerate(te.index):
+                cur = (cur + (cfg.capital if k == 0 else flows.iloc[k])) * (1 + br.iloc[k])
+                bvals.append(cur)
+            bench = {"value": pd.Series(bvals, index=te.index), "returns": br}
+        else:
+            notes.append(t("Benchmark omitted: its return history does not cover every test date; missing benchmark returns were not filled with zero."))
     return LabResult(cfg, runs, tr, te, mu_tr, cov_tr, flows, bench, notes)
 
 

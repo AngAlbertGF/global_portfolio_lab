@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.statistics import block_bootstrap_ci, check_covariance, cov_to_corr, estimate_cov, estimate_mu, \
-    historical_var_cvar, ledoit_wolf, max_drawdown, portfolio_statistics, rf_markowitz, rf_per_period, \
+from src.statistics import asset_statistics, block_bootstrap_ci, check_covariance, cov_to_corr, estimate_cov, estimate_mu, \
+    ewma_weights, historical_var_cvar, ledoit_wolf, max_drawdown, portfolio_statistics, rf_markowitz, rf_per_period, \
     risk_decomposition
 from tests.conftest import returns_frame
 
@@ -96,3 +96,80 @@ def test_bootstrap_ci_contains_point_estimate():
     R = returns_frame(T=800)
     ci = block_bootstrap_ci(R.mean(axis=1), 0.05, 252, n_boot=200)
     assert (ci["ci_low"] <= ci["estimate"]).all() and (ci["estimate"] <= ci["ci_high"]).all()
+
+
+
+def test_estimator_inputs_fail_fast():
+    with pytest.raises(ValueError):
+        rf_per_period(-1.0, 252)
+    with pytest.raises(ValueError):
+        rf_per_period(0.05, 0)
+    with pytest.raises(ValueError):
+        ewma_weights(0, 0.97)
+    with pytest.raises(ValueError):
+        ewma_weights(10, 1.01)
+    with pytest.raises(ValueError):
+        estimate_cov(pd.DataFrame({"A": [0.01, np.nan]}), "sample", 252)
+    with pytest.raises(ValueError):
+        estimate_mu(pd.DataFrame({"A": []}), "arithmetic", 252)
+    with pytest.raises(ValueError):
+        historical_var_cvar(pd.Series([0.01, -0.01]), 1.0)
+
+
+def test_asset_cagr_counts_the_first_return_interval():
+    idx = pd.bdate_range("2024-01-02", periods=3)
+    returns = pd.DataFrame({"A": [0.10, 0.10, 0.10]}, index=idx)
+    weights = pd.Series({"A": 1.0})
+    cov = pd.DataFrame([[0.01]], index=["A"], columns=["A"])
+    mu = pd.Series({"A": 0.10})
+    meta = pd.DataFrame(index=["A"])
+    got = asset_statistics(returns, weights, cov, mu, 0.0, 252, meta).loc["A", "annual_cagr"]
+    start = idx[0] - (idx[1] - idx[0])
+    expected = (1.1 ** 3) ** (365.25 / (idx[-1] - start).days) - 1
+    assert got == pytest.approx(expected)
+
+
+
+def test_cagr_uses_actual_pre_sample_price_date_for_irregular_intervals():
+    idx = pd.to_datetime(["2024-01-10", "2024-01-11", "2024-01-15"])
+    period_start = pd.Timestamp("2024-01-05")
+    r = pd.Series([0.10, 0.10, 0.10], index=idx)
+    stats = portfolio_statistics(r, 0.0, 252, period_start=period_start)
+    expected = (1.1 ** 3) ** (365.25 / (idx[-1] - period_start).days) - 1
+    assert stats["annual_geometric_return_cagr"] == pytest.approx(expected)
+    assert np.isnan(stats["skewness"])
+    assert np.isnan(stats["excess_kurtosis"])
+
+    returns = pd.DataFrame({"A": r})
+    weights = pd.Series({"A": 1.0})
+    cov = pd.DataFrame([[0.01]], index=["A"], columns=["A"])
+    mu = pd.Series({"A": 0.10})
+    got = asset_statistics(returns, weights, cov, mu, 0.0, 252,
+                           pd.DataFrame(index=["A"]), period_start=period_start).loc["A", "annual_cagr"]
+    assert got == pytest.approx(expected)
+
+
+def test_covariance_and_bootstrap_reject_invalid_annualization_and_blocks():
+    with pytest.raises(ValueError, match="periods_per_year"):
+        estimate_cov(pd.DataFrame({"A": [0.01, -0.01]}), "sample", 0)
+    with pytest.raises(ValueError, match="block"):
+        block_bootstrap_ci(pd.Series([0.01, -0.01, 0.02]), 0.05, 252, block=0)
+
+
+
+def test_user_expected_returns_reject_nonfinite_values():
+    returns = pd.DataFrame({"A": [0.01, -0.01], "B": [0.02, -0.02]})
+    with pytest.raises(ValueError, match="finite numeric"):
+        estimate_mu(returns, "user", 252, user={"A": 0.05, "B": np.inf})
+    with pytest.raises(ValueError, match="square, and finite"):
+        check_covariance(pd.DataFrame([[0.1, 0.0], [0.0, np.nan]]), 100)
+
+
+
+def test_max_drawdown_does_not_mislabel_initial_peak_date():
+    idx = pd.to_datetime(["2024-01-02", "2024-01-03"])
+    r = pd.Series([-0.20, 0.10], index=idx)
+    mdd, peak, trough = max_drawdown(r)
+    assert mdd == pytest.approx(-0.20)
+    assert peak is None  # the NAV=1 peak occurred before the first observed return date
+    assert trough == idx[0]

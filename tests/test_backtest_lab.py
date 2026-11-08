@@ -103,3 +103,61 @@ def test_helpers():
     assert np.allclose(paths[:, -1], 1100.0)
     ed = entry_date_sensitivity(pd.DataFrame({"A": 0.001}, index=idx), {"x": np.array([1.0])}, 100.0)
     assert len(ed) == 3 and ed["x"].is_monotonic_decreasing
+
+
+
+def test_missing_benchmark_returns_are_not_filled_with_zero(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    complete = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=prices.iloc[:, 0])
+    assert complete.benchmark is not None
+
+    incomplete_benchmark = prices.iloc[:, 0].copy()
+    missing_date = prices.loc[prices.index >= "2026-01-01"].index[5]
+    incomplete_benchmark.loc[missing_date] = np.nan
+    incomplete = run_lab(prices, global_weights(p), cs, cfg, benchmark_prices=incomplete_benchmark)
+    assert incomplete.benchmark is None
+    assert any("Benchmark omitted" in note for note in incomplete.notes)
+
+
+
+def test_backtest_annualization_uses_actual_pre_test_price_date(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    res = run_lab(prices, global_weights(p), cs, cfg)
+    first_test_return_date = res.test_returns.index[0]
+    first_pos = prices.index.get_loc(first_test_return_date)
+    assert first_pos > 0
+    actual_start = prices.index[first_pos - 1]
+    expected_years = (res.test_returns.index[-1] - actual_start).days / 365.25
+    assert res.runs["user"].realized["years"] == pytest.approx(expected_years)
+
+
+
+def test_backtest_lab_rejects_infeasible_user_weights_and_negative_costs(setup):
+    p, cs, prices = setup
+    cfg = _cfg(strategies=("user",), contribution=0.0)
+    invalid_weights = global_weights(p).copy()
+    invalid_weights.iloc[0] += 0.1
+    with pytest.raises(ValueError, match="User weights"):
+        run_lab(prices, invalid_weights, cs, cfg)
+
+    cfg.cost_bps = -1.0
+    with pytest.raises(ValueError, match="costs"):
+        run_lab(prices, global_weights(p), cs, cfg)
+
+
+
+def test_predictive_lab_stops_short_portfolio_after_nav_breach():
+    dates = pd.bdate_range("2024-01-02", periods=100)
+    prices = pd.DataFrame({"A": 100.0, "B": 100.0}, index=dates)
+    prices.loc[dates[70]:, "B"] = 400.0
+    cs = ConstraintSet.build(["A", "B"], {"A": "ALL", "B": "ALL"}, {"ALL": 1.0},
+                             mode="global_only", long_only=False, min_weight=-1.0)
+    weights = pd.Series({"A": 1.5, "B": -0.5})
+    cfg = LabConfig(train_start=dates[0].date(), train_end=dates[69].date(),
+                    test_start=dates[70].date(), test_end=dates[-1].date(),
+                    strategies=("user",), capital=100_000.0, contribution=0.0, rebalance="none",
+                    periods_per_year=252, n_paths=10)
+    with pytest.raises(RuntimeError, match="NAV became non-positive"):
+        run_lab(prices, weights, cs, cfg)

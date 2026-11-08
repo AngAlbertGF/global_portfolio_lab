@@ -405,7 +405,7 @@ class DataService:
                     b = provider.fetch_history(fx_symbol("USD", from_ccy), s, e)["close"]
                     series = triangulate(a, b)
                     source = f"DERIVED: {fx_symbol('USD', to_ccy)} / {fx_symbol('USD', from_ccy)} ({provider.name})"
-                series = series.dropna()
+                series = series.replace([np.inf, -np.inf], np.nan).dropna()
                 series = series[(series > 0) & (pd.DatetimeIndex(series.index) < pd.Timestamp(e))]
                 ins, upd = self.db.upsert_fx(from_ccy, to_ccy, series, source)
                 if kind in ("initial", "backfill"):

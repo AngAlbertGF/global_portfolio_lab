@@ -88,7 +88,8 @@ def convert_to_base(prices_local: pd.Series, trading_currency: str, base_currenc
     dropped -- stock prices are never invented.
     """
     major, divisor = major_currency(trading_currency)
-    s = prices_local.dropna().astype(float) / divisor
+    s = prices_local.dropna().astype(float)
+    s = s[np.isfinite(s.to_numpy(dtype=float)) & (s.to_numpy(dtype=float) > 0)] / divisor
     s.index = pd.DatetimeIndex(s.index)
     notes: list[str] = []
     if divisor != 1.0:
@@ -99,11 +100,13 @@ def convert_to_base(prices_local: pd.Series, trading_currency: str, base_currenc
                                len(s), 0, 0, 0, notes)
         return s, rep
     pair = f"{major}{base_currency}"
-    if fx is None or fx.dropna().empty:
-        notes.append(t("No FX series {pair} available; security cannot be converted.", pair=pair))
+    f = pd.Series(dtype=float) if fx is None else fx.dropna().astype(float).sort_index()
+    if len(f):
+        f = f[np.isfinite(f.to_numpy(dtype=float)) & (f.to_numpy(dtype=float) > 0)]
+    if f.empty:
+        notes.append(t("No valid FX series {pair} available; security cannot be converted.", pair=pair))
         return pd.Series(dtype=float), ConversionReport(ticker, trading_currency, major, divisor, pair,
                                                         direction_verified, len(s), 0, 0, 0, len(s), 0, notes)
-    f = fx.dropna().sort_index()
     f.index = pd.DatetimeIndex(f.index)
     left = pd.DataFrame({"date": s.index, "price": s.values}).sort_values("date")
     right = pd.DataFrame({"fx_date": f.index, "rate": f.values}).sort_values("fx_date")
@@ -136,6 +139,7 @@ def conversion_detail(prices_local: pd.Series, trading_currency: str, base_curre
     """
     major, divisor = major_currency(trading_currency)
     s = prices_local.dropna().astype(float)
+    s = s[np.isfinite(s.to_numpy(dtype=float)) & (s.to_numpy(dtype=float) > 0)]
     s.index = pd.DatetimeIndex(s.index)
     left = pd.DataFrame({"date": s.index.astype("datetime64[ns]"), "price_local": s.values})
     left["divisor"] = divisor
@@ -143,24 +147,32 @@ def conversion_detail(prices_local: pd.Series, trading_currency: str, base_curre
     if major == base_currency:
         left["fx_date"] = left["date"]
         left["fx_rate"] = 1.0
-    elif fx is None or fx.dropna().empty:
-        left["fx_date"] = pd.NaT
-        left["fx_rate"] = np.nan
     else:
-        f = fx.dropna().sort_index()
-        right = pd.DataFrame({"fx_date": pd.DatetimeIndex(f.index).astype("datetime64[ns]"), "fx_rate": f.values})
-        left = pd.merge_asof(left.sort_values("date"), right.sort_values("fx_date"), left_on="date",
-                             right_on="fx_date", direction="backward",
-                             tolerance=pd.Timedelta(days=max_staleness_days))
+        f = pd.Series(dtype=float) if fx is None else fx.dropna().astype(float).sort_index()
+        if len(f):
+            f = f[np.isfinite(f.to_numpy(dtype=float)) & (f.to_numpy(dtype=float) > 0)]
+        if f.empty:
+            left["fx_date"] = pd.NaT
+            left["fx_rate"] = np.nan
+        else:
+            right = pd.DataFrame({"fx_date": pd.DatetimeIndex(f.index).astype("datetime64[ns]"), "fx_rate": f.values})
+            left = pd.merge_asof(left.sort_values("date"), right.sort_values("fx_date"), left_on="date",
+                                 right_on="fx_date", direction="backward",
+                                 tolerance=pd.Timedelta(days=max_staleness_days))
     left["price_base"] = left["price_major"] * left["fx_rate"]
     left["carried_days"] = (left["date"] - left["fx_date"]).dt.days
     return left.set_index("date")
 
 
 def triangulate(usd_to_base: pd.Series, usd_to_foreign: pd.Series) -> pd.Series:
-    """foreign->base = (base per USD) / (foreign per USD), on common dates only."""
-    common = usd_to_base.dropna().index.intersection(usd_to_foreign.dropna().index)
-    return (usd_to_base.loc[common] / usd_to_foreign.loc[common]).rename("triangulated")
+    """foreign->base = (base per USD) / (foreign per USD), on common valid dates only."""
+    a = usd_to_base.dropna().astype(float)
+    b = usd_to_foreign.dropna().astype(float)
+    a = a[np.isfinite(a.to_numpy(dtype=float)) & (a.to_numpy(dtype=float) > 0)]
+    b = b[np.isfinite(b.to_numpy(dtype=float)) & (b.to_numpy(dtype=float) > 0)]
+    common = a.index.intersection(b.index)
+    out = (a.loc[common] / b.loc[common]).replace([np.inf, -np.inf], np.nan).dropna()
+    return out[out > 0].rename("triangulated")
 
 
 def stale_fx_flags(fx: pd.Series, max_gap_days: int = 5, as_of: date | None = None) -> list[str]:

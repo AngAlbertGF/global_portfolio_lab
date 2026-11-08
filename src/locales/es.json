@@ -1363,5 +1363,12 @@
   "Under a year: annualized figures are extrapolated from few data.": "Menos de un año: las cifras anualizadas se extrapolan a partir de pocos datos.",
   "The window has only {n} return observations and the minimum is {needed}: widen the window or lower the minimum.": "La ventana tiene solo {n} observaciones de rendimiento y el mínimo es {needed}: amplía la ventana o baja el mínimo.",
   "Accept {n} observations (lower the minimum)": "Aceptar {n} observaciones (bajar el mínimo)",
-  "Changes 'Minimum observations' in Settings for every horizon.": "Cambia 'Observaciones mínimas' en Configuración para todos los horizontes."
+  "Changes 'Minimum observations' in Settings for every horizon.": "Cambia 'Observaciones mínimas' en Configuración para todos los horizontes.",
+  "Benchmark omitted: its return history does not cover every test date; missing benchmark returns were not filled with zero.": "Se omite el índice de referencia: su historial de rendimientos no cubre todas las fechas de prueba; los rendimientos faltantes no se sustituyeron por cero.",
+  "{date}: equal-weight allocation violates the configured per-security bounds; strategy skipped.": "{date}: la asignación equiponderada incumple los límites configurados por valor; se omite la estrategia.",
+  "No valid FX series {pair} available; security cannot be converted.": "No hay una serie válida de tipo de cambio {pair}; el valor no se puede convertir.",
+  "SLSQP (equal percentage risk contributions, multi-start)": "SLSQP (contribuciones porcentuales iguales al riesgo, múltiples puntos iniciales)",
+  "Risk-parity optimisation failed; a feasible starting portfolio is shown only as fallback.": "Falló la optimización de paridad de riesgo; solo se muestra como alternativa un portafolio inicial factible.",
+  "Squared dispersion of percentage variance contributions: {value}.": "Dispersión cuadrática de las contribuciones porcentuales a la varianza: {value}.",
+  "Fallback weights are not a risk-parity solution and must not be interpreted as one.": "Los pesos alternativos no son una solución de paridad de riesgo y no deben interpretarse como tal."
 }

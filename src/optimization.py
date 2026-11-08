@@ -288,6 +288,21 @@ def minimum_return_value(mu: np.ndarray, cs: ConstraintSet) -> float | None:
 def minimum_cvar(returns: np.ndarray, mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float,
                  level: float = 0.95) -> OptimizationResult:
     """Rockafellar-Uryasev LP: min a + 1/((1-b)T) sum u_t, u_t >= -r_t'w - a, u >= 0 (per-period scenarios)."""
+    returns = np.asarray(returns, dtype=float)
+    mu = np.asarray(mu, dtype=float)
+    cov = np.asarray(cov, dtype=float)
+    if not np.isfinite(level) or not 0.0 < level < 1.0:
+        raise ValueError("CVaR confidence level must lie strictly between 0 and 1.")
+    if (returns.ndim != 2 or returns.shape[0] < 2 or returns.shape[1] != cs.n
+            or not np.isfinite(returns).all() or np.any(returns < -1.0)):
+        raise ValueError("CVaR scenarios must be a finite T-by-N matrix with T >= 2 and returns >= -100%.")
+    if mu.shape != (cs.n,) or cov.shape != (cs.n, cs.n) or not np.isfinite(mu).all() or not np.isfinite(cov).all():
+        raise ValueError("CVaR expected returns and covariance must be finite and match the constraint universe.")
+    if not np.isfinite(rf):
+        raise ValueError("The risk-free input to CVaR optimisation must be finite.")
+    problems = cs.feasibility_problems()
+    if problems:
+        return _infeasible(t("Minimum CVaR {level}", level=f"{level:.0%}"), cs, mu, cov, rf, problems)
     T, n = returns.shape
     A, b = cs.equality_system()
     c = np.concatenate([np.zeros(n), [1.0], np.full(T, 1.0 / ((1 - level) * T))])
@@ -520,28 +535,72 @@ def inverse_volatility(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: f
 
 
 def risk_parity(mu: np.ndarray, cov: np.ndarray, cs: ConstraintSet, rf: float) -> OptimizationResult:
-    """Equal risk contribution (w_i (Σw)_i equal for all i) as far as the constraints allow (SLSQP)."""
+    """Minimise dispersion of *percentage* Euler variance contributions (equal risk shares)."""
+    name = t("Risk parity")
+    problems = cs.feasibility_problems()
+    if problems:
+        return _infeasible(name, cs, mu, cov, rf, problems)
+
     n = cs.n
-    x0 = inverse_volatility(mu, cov, cs, rf).weights.values
 
-    def f(w):
+    def risk_shares(w: np.ndarray) -> np.ndarray | None:
         sw = cov @ w
-        rc = w * sw
-        return float(np.sum((rc - rc.mean()) ** 2)) * 1e4
+        variance = float(w @ sw)
+        if not np.isfinite(variance) or variance <= 1e-16:
+            return None
+        return (w * sw) / variance
 
-    def g(w):
+    def objective(w: np.ndarray) -> float:
+        shares = risk_shares(w)
+        if shares is None or not np.isfinite(shares).all():
+            return 1e6
+        deviation = shares - 1.0 / n
+        return float(deviation @ deviation)
+
+    def gradient(w: np.ndarray) -> np.ndarray:
         sw = cov @ w
+        variance = float(w @ sw)
+        if not np.isfinite(variance) or variance <= 1e-16:
+            return np.zeros(n)
         rc = w * sw
-        d = rc - rc.mean()
-        # d/dw_k of sum_i d_i^2 with rc_i = w_i (Σw)_i; mean term cancels in the sum of deviations
-        J = np.diag(sw) + w[:, None] * cov
-        return 2.0 * (J.T @ d) * 1e4
-    sol = minimize(f, x0, jac=g, method="SLSQP", bounds=list(zip(cs.lb, cs.ub)), constraints=_scipy_constraints(cs),
-                   options={"ftol": 1e-16, "maxiter": 3000})
-    ok = bool(sol.success) and cs.is_feasible(cs.polish(sol.x.copy()))
-    res = make_result(t("Risk parity"), sol.x if ok else x0, cs, mu, cov, rf, True,
-                      sol.message if ok else t("used inverse-volatility start"), t("SLSQP (equal risk contribution)"),
-                      t("local optimum (non-convex)") if ok else t("approximate (not certified)"))
+        deviation = rc / variance - 1.0 / n
+        # J_rc[i,k] = d(w_i (Σw)_i)/dw_k. Apply the quotient rule
+        # to each risk share RC_i / (w'Σw), whose denominator gradient is 2Σw.
+        jac_rc = np.diag(sw) + w[:, None] * cov
+        jac_share = jac_rc / variance - np.outer(rc, 2.0 * sw) / variance**2
+        return 2.0 * jac_share.T @ deviation
+
+    # Inverse-volatility is a useful starting point, but it may violate stock caps.
+    # Always retain a constraint-feasible start and use deterministic multi-starts.
+    starts = [cs.feasible_start()]
+    inv_vol = inverse_volatility(mu, cov, cs, rf).weights.values
+    if cs.is_feasible(inv_vol):
+        starts.append(inv_vol)
+    rng = np.random.default_rng(17)
+    starts.extend(cs.feasible_start(rng) for _ in range(7))
+
+    candidates: list[tuple[float, np.ndarray, object]] = []
+    for x0 in starts:
+        sol = minimize(objective, x0, jac=gradient, method="SLSQP",
+                       bounds=list(zip(cs.lb, cs.ub)), constraints=_scipy_constraints(cs),
+                       options={"ftol": 1e-12, "maxiter": 3000})
+        w = cs.polish(np.asarray(sol.x, dtype=float).copy())
+        if (bool(sol.success) and np.isfinite(w).all() and cs.is_feasible(w)
+                and risk_shares(w) is not None):
+            candidates.append((objective(w), w, sol))
+
+    if not candidates:
+        fallback = cs.feasible_start()
+        return make_result(name, fallback, cs, mu, cov, rf, False,
+                           t("Risk-parity optimisation failed; a feasible starting portfolio is shown only as fallback."),
+                           t("SLSQP (equal percentage risk contributions, multi-start)"), t("failed"),
+                           [t("Fallback weights are not a risk-parity solution and must not be interpreted as one.")])
+
+    value, best, sol = min(candidates, key=lambda item: item[0])
+    res = make_result(name, best, cs, mu, cov, rf, True, sol.message,
+                      t("SLSQP (equal percentage risk contributions, multi-start)"),
+                      t("local optimum (non-convex)"),
+                      [t("Squared dispersion of percentage variance contributions: {value}.", value=f"{value:.3e}")])
     return res
 
 

@@ -299,7 +299,7 @@ window (default: 2026-01-01 to the last date). Two modes: *static* (weights esti
 then held/rebalanced during the test, the honest "train then predict" setting) and *walk-forward* (re-estimated at
 each rebalance with an expanding or rolling window, using only returns strictly before that date; a test truncates
 the future and checks the weights are unchanged). Ten strategies: your weights, equal weight, inverse volatility,
-risk parity (equal risk contribution), minimum variance, maximum Sharpe, maximum diversification, minimum CVaR,
+risk parity (equal percentage Euler variance contributions, solved by constrained multi-start SLSQP and labelled as a local/non-certified solution), minimum variance, maximum Sharpe, maximum diversification, minimum CVaR,
 maximum return and the benchmark. Options: rebalancing (none, monthly, quarterly, semiannual, annual), initial
 capital and monthly contributions, commission + slippage in bps of traded value and an FX cost on foreign
 trades. Money is simulated in holdings (`W_t = Σ h_i P_i`); the time-weighted return chains
@@ -361,10 +361,10 @@ reports always use the light palette.
 ## 9. Tests
 
 ```bash
-pytest -q                                   # 107 tests, no network (the 2 live tests are skipped)
+pytest -q                                   # all offline tests (live Yahoo tests are skipped unless enabled)
 GPL_LIVE_TESTS=1 pytest tests/test_live_yahoo.py -v     # optional, real Yahoo downloads
 ```
-Results on 2026-10-31 (Python 3.13.18, Linux): **105 passed, 2 skipped** offline (the skipped ones are the live
+Historical test run on 2026-10-31 (Python 3.13.18, Linux): **105 passed, 2 skipped** offline (the skipped ones are the live
 tests); **both live tests passed** separately: (1) validated and downloaded AAPL, WALMEX.MX, 7203.T, PETR4.SA,
 rejected an invalid `.MX` symbol, refresh added no duplicate rows, USD→MXN direction verified, 1y and 5y horizons
 complete, all optimizers valid; (2) downloaded the Nikkei ETF `1321.T` through its 100:1 split with no split-sized

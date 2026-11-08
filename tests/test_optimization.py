@@ -6,7 +6,7 @@ import pytest
 
 from src.frontier import build_frontier
 from src.optimization import ConstraintSet, equal_weight, maximum_diversification, maximum_return, maximum_risk, \
-    maximum_sharpe, minimum_cvar, minimum_variance, port_stats, run_all, target_volatility
+    maximum_sharpe, minimum_cvar, minimum_variance, port_stats, risk_parity, run_all, target_volatility
 from tests.conftest import random_cov, returns_frame
 
 TICKERS = ["U1", "U2", "U3", "M1", "M2", "J1", "J2"]
@@ -183,3 +183,47 @@ def test_max_sharpe_when_no_portfolio_beats_rf(problem):
     mu[0] = 0.02
     res = maximum_sharpe(mu, S, cs, rf=0.10)
     assert res.ok and "approximate" in res.certification and res.sharpe < 0
+
+
+
+def test_risk_parity_equalizes_percentage_variance_contributions():
+    tickers = ["A", "B", "C"]
+    market = {ticker: "ALL" for ticker in tickers}
+    cs = ConstraintSet.build(tickers, market, {"ALL": 1.0}, mode="global_only")
+    cov = np.diag([0.01, 0.04, 0.09])
+    mu = np.array([0.05, 0.06, 0.07])
+    res = risk_parity(mu, cov, cs, rf=0.02)
+    assert_valid(res, cs)
+    w = res.weights.values
+    rc = w * (cov @ w)
+    shares = rc / (w @ cov @ w)
+    assert shares == pytest.approx(np.full(3, 1 / 3), abs=1e-6)
+    assert w == pytest.approx(np.array([6, 3, 2]) / 11, abs=1e-6)
+
+
+def test_risk_parity_does_not_report_fallback_as_optimisation_success(problem, monkeypatch):
+    import src.optimization as optimisation
+    from types import SimpleNamespace
+
+    mu, cov, cs, rf = problem
+
+    def forced_failure(fun, x0, **kwargs):
+        return SimpleNamespace(success=False, x=np.asarray(x0), message="forced failure")
+
+    monkeypatch.setattr(optimisation, "minimize", forced_failure)
+    res = optimisation.risk_parity(mu, cov, cs, rf)
+    assert not res.ok
+    assert not res.solver_success
+    assert res.certification == "failed"
+    assert any("fallback" in note.lower() for note in res.notes)
+
+
+
+def test_minimum_cvar_rejects_invalid_level_and_scenarios(problem):
+    mu, cov, cs, rf = problem
+    scenarios = np.zeros((100, cs.n))
+    with pytest.raises(ValueError, match="confidence level"):
+        minimum_cvar(scenarios, mu, cov, cs, rf, level=1.0)
+    scenarios[0, 0] = np.inf
+    with pytest.raises(ValueError, match="finite T-by-N"):
+        minimum_cvar(scenarios, mu, cov, cs, rf)

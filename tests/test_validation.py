@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -67,3 +68,15 @@ def test_clean_price_frame_never_fabricates():
     assert len(out) == 3 and rep.dropped_missing_close == 1 and rep.dropped_nonpositive == 1
     assert rep.high_below_low == 1
     assert set(out.index) <= set(df.index)
+
+
+
+def test_clean_price_frame_drops_infinite_prices():
+    idx = pd.bdate_range("2024-01-01", periods=4)
+    df = pd.DataFrame({"close": [10.0, float("inf"), 11.0, 12.0],
+                       "adj_close": [10.0, 10.5, float("inf"), 12.0],
+                       "high": [11.0] * 4, "low": [9.0] * 4}, index=idx)
+    out, rep = clean_price_frame(df)
+    assert list(out.index) == [idx[0], idx[3]]
+    assert rep.dropped_missing_close == 2
+    assert np.isfinite(out[["close", "adj_close"]].to_numpy()).all()

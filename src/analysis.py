@@ -377,9 +377,9 @@ def analyze_horizon(h: int, prices_base: pd.DataFrame, portfolio: Portfolio, set
             b = b.reindex(px.index)  # benchmark dates outside the common calendar are not used; no filling
             res.benchmark_returns = simple_returns(b).dropna()
         res.user_stats = portfolio_statistics(res.portfolio_returns, settings.risk_free_annual, n,
-                                              res.benchmark_returns)
+                                              res.benchmark_returns, period_start=px.index.min())
         res.asset_stats = asset_statistics(rets, res.weights_user, res.cov, res.mu, settings.risk_free_annual, n,
-                                           meta, res.benchmark_returns)
+                                           meta, res.benchmark_returns, period_start=px.index.min())
         res.risk_decomp = risk_decomposition(res.weights_user, res.cov)
         mkt = {h_.ticker: h_.market_id for h_ in portfolio.holdings}
         ccy = {t: major_currency((meta.loc[t, "currency"] if t in meta.index else "") or "")[0] for t in universe}
