@@ -161,3 +161,13 @@ def test_user_expected_returns_reject_nonfinite_values():
         estimate_mu(returns, "user", 252, user={"A": 0.05, "B": np.inf})
     with pytest.raises(ValueError, match="square, and finite"):
         check_covariance(pd.DataFrame([[0.1, 0.0], [0.0, np.nan]]), 100)
+
+
+
+def test_max_drawdown_does_not_mislabel_initial_peak_date():
+    idx = pd.to_datetime(["2024-01-02", "2024-01-03"])
+    r = pd.Series([-0.20, 0.10], index=idx)
+    mdd, peak, trough = max_drawdown(r)
+    assert mdd == pytest.approx(-0.20)
+    assert peak is None  # the NAV=1 peak occurred before the first observed return date
+    assert trough == idx[0]
